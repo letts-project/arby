@@ -1,0 +1,29 @@
+[Unit]
+Description=arby — letts cluster web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arby
+Group=arby
+EnvironmentFile=-/etc/arby/arby.env
+ExecStart=/usr/bin/arby $ARBY_OPTS
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

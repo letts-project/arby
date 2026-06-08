@@ -1,0 +1,6 @@
+node_modules/
+dist/*
+!dist/.gitkeep
+src/routeTree.gen.ts
+*.tsbuildinfo
+*.local

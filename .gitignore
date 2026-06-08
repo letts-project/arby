@@ -1,0 +1,10 @@
+/arby
+/dist/
+web/dist/*
+!web/dist/.gitkeep
+web/node_modules/
+web/src/routeTree.gen.ts
+*.test
+*.out
+.DS_Store
+.idea/

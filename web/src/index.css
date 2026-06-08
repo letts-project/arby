@@ -1,0 +1,149 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Class-strategy dark mode (Tailwind v4): .dark on <html>. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+  arby — "refined industrial / operator console".
+  Cool-slate neutrals, one confident blue primary, sharp status accents,
+  thin precise borders, tight radius. IBM Plex Sans (UI, tabular numerals) +
+  IBM Plex Mono (IDs / logs / data). Light default, .dark toggle.
+*/
+:root {
+  --background: oklch(0.992 0.001 250);
+  --foreground: oklch(0.23 0.012 255);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+  --muted: oklch(0.965 0.004 255);
+  --muted-foreground: oklch(0.515 0.014 255);
+  --border: oklch(0.912 0.005 255);
+  --border-strong: oklch(0.855 0.008 255);
+  --input: oklch(0.9 0.006 255);
+  --primary: oklch(0.54 0.17 256);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0.006 255);
+  --secondary-foreground: oklch(0.3 0.02 256);
+  --accent: oklch(0.95 0.014 256);
+  --accent-foreground: oklch(0.32 0.05 256);
+  --destructive: oklch(0.55 0.21 28);
+  --destructive-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.54 0.17 256);
+  /* status accents — text/badges */
+  --status-running: oklch(0.53 0.17 256);
+  --status-success: oklch(0.5 0.13 155);
+  --status-failed: oklch(0.55 0.21 28);
+  --status-queued: oklch(0.53 0.012 255);
+  --status-warn: oklch(0.6 0.14 65);
+  --radius: 0.3rem;
+}
+
+.dark {
+  --background: oklch(0.178 0.012 260);
+  --foreground: oklch(0.93 0.006 255);
+  --card: oklch(0.208 0.013 260);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.218 0.014 260);
+  --popover-foreground: var(--foreground);
+  --muted: oklch(0.255 0.013 260);
+  --muted-foreground: oklch(0.67 0.012 255);
+  --border: oklch(0.295 0.013 260);
+  --border-strong: oklch(0.37 0.016 260);
+  --input: oklch(0.31 0.014 260);
+  --primary: oklch(0.7 0.15 256);
+  --primary-foreground: oklch(0.17 0.012 260);
+  --secondary: oklch(0.26 0.013 260);
+  --secondary-foreground: oklch(0.9 0.008 255);
+  --accent: oklch(0.29 0.02 258);
+  --accent-foreground: oklch(0.92 0.01 255);
+  --destructive: oklch(0.62 0.19 28);
+  --destructive-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.7 0.15 256);
+  --status-running: oklch(0.72 0.15 256);
+  --status-success: oklch(0.72 0.13 155);
+  --status-failed: oklch(0.7 0.18 28);
+  --status-queued: oklch(0.7 0.012 255);
+  --status-warn: oklch(0.78 0.14 70);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-status-running: var(--status-running);
+  --color-status-success: var(--status-success);
+  --color-status-failed: var(--status-failed);
+  --color-status-queued: var(--status-queued);
+  --color-status-warn: var(--status-warn);
+
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    font-feature-settings: "cv05" 1, "ss01" 1; /* Plex tweaks: open 4/legible */
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Tabular figures everywhere so dense numeric columns align. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--color-primary) 26%, transparent);
+  }
+  /* Thin utilitarian scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 9px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+}

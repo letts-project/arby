@@ -1,0 +1,27 @@
+name: arby
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: utils
+priority: optional
+maintainer: Evgeny Zinoviev <eswyft@gmail.com>
+description: |
+  arby — admin web UI for a letts task-queue cluster (a Go aggregator with an
+  embedded React SPA). Reads letts.yaml, fans out to every dugdale over /v1,
+  merges, and serves a dashboard. Runs on an admin host behind a reverse proxy.
+homepage: https://git.eswyft.org/letts/arby
+license: MIT
+contents:
+  - src: dist/arby-linux-amd64
+    dst: /usr/bin/arby
+    file_info:
+      mode: 0755
+  - src: packaging/systemd/arby.service
+    dst: /lib/systemd/system/arby.service
+  - src: packaging/examples/arby.env
+    dst: /etc/arby/arby.env.example
+    type: config
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove:   packaging/scripts/preremove.sh
+  postremove:  packaging/scripts/postremove.sh
