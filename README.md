@@ -1,6 +1,6 @@
 # arby
 
-**arby** is the admin web UI for a [letts](../letts) task-queue cluster — a single
+**arby** is the admin web UI for a [letts](https://git.eswyft.org/letts/letts) task-queue cluster — a single
 Go binary with an embedded React SPA. It reads your existing `letts.yaml`, fans
 out in parallel to every dugdale over its `/v1` HTTP API, merges the per-host
 results into one cluster-wide view, and serves that to the browser as its own
