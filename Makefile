@@ -7,7 +7,7 @@
 # -ldflags. `go test`/`go vet` run the Go side alone (the committed
 # web/dist/.gitkeep keeps the embed compiling without an npm build).
 
-.PHONY: build build-web test vet linux deb bump version help
+.PHONY: build build-web test vet linux deb bump release version help
 
 VERSION  := $(shell ./scripts/build/version.sh)
 COMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -37,8 +37,11 @@ linux: ## Cross-compile a version-stamped linux/amd64 arby into dist/ (SPA and G
 deb: ## Build the linux binary and package a .deb into dist/ (needs nfpm)
 	./scripts/build/package.sh
 
-bump: ## Increment the build number in VERSION and commit it
+bump: ## Increment the build number in VERSION, commit and tag it
 	./scripts/build/bump.sh
+
+release: ## Push current branch + version tag to origin (triggers CI release)
+	./scripts/build/release.sh
 
 version: ## Print the current version string (0.0.<N>)
 	@./scripts/build/version.sh
