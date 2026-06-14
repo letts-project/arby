@@ -25,6 +25,12 @@ jobs:
               fetch --tags --force --prune origin
           git checkout -q "${GITHUB_SHA}"
 
+      - name: Fetch the sibling letts module (go.mod replace -> ../letts)
+        run: |
+          rm -rf ../letts
+          git -c http.extraHeader="Authorization: token ${GITEA_TOKEN}" \
+              clone --depth 1 "${GITHUB_SERVER_URL}/letts/letts.git" ../letts
+
       - name: Build the .deb (SPA via npm, then go + nfpm)
         run: |
           command -v nfpm >/dev/null 2>&1 \
