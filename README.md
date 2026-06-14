@@ -101,6 +101,26 @@ server side by side — Vite proxies `/api` and `/healthz` to the running binary
 npm --prefix web run dev       # Vite dev server with HMR, proxying to arby
 ```
 
+### Releasing
+
+Releases are tag-driven. Pushing a `v0.0.N` tag makes a host-mode Gitea Actions
+runner build the `.deb` once (SPA via npm, then `go` + nfpm) and publish it to
+both the Gitea release page (`git.eswyft.org/letts/arby`) and the GitHub release
+page (`github.com/letts-project/arby`). The push-mirror only carries the tag to
+GitHub; the GitHub *release* is created by the CI job.
+
+```sh
+# ... commit your work first ...
+make bump      # VERSION++, commit VERSION, annotated tag v0.0.N (local only)
+make deb       # optional: build the .deb locally to sanity-check
+make release   # push branch + tag to origin -> CI publishes to both
+```
+
+CI prerequisites (one-time): a Gitea Actions runner registered in host mode with
+the `arby-freebsd` label and `bash git go npm curl jq` on that host (npm is
+needed to build the SPA), plus a `GH_PAT` repo secret (GitHub fine-grained PAT on
+`letts-project/arby`, Contents: write).
+
 ## Configuration
 
 **Cluster topology and tokens** come from your existing **`letts.yaml`** (the same
