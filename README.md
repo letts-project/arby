@@ -101,6 +101,22 @@ server side by side — Vite proxies `/api` and `/healthz` to the running binary
 npm --prefix web run dev       # Vite dev server with HMR, proxying to arby
 ```
 
+### Install via apt
+
+arby is published to the public eswyft apt repo (Gitea Debian registry). On a
+Debian host:
+
+```sh
+install -d /etc/apt/keyrings
+curl -fsSL https://git.eswyft.org/api/packages/eswyft/debian/repository.key \
+  | gpg --dearmor -o /etc/apt/keyrings/eswyft.gpg
+echo "deb [signed-by=/etc/apt/keyrings/eswyft.gpg] https://git.eswyft.org/api/packages/eswyft/debian stable main" \
+  | sudo tee /etc/apt/sources.list.d/eswyft.list
+sudo apt update && sudo apt install arby
+```
+
+Updates are then just `apt update && apt upgrade`.
+
 ### Releasing
 
 Releases are tag-driven. Pushing a `v0.0.N` tag makes a host-mode Gitea Actions
