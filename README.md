@@ -29,7 +29,9 @@ are still created by your applications and the `letts` CLI, not here.
   (bulk requests are chunked and grouped per host).
 - **Lanes** — every lane across the cluster, with pause / continue.
 - **Dugdales** — per-host status table.
-- **Config** — read-only view of each host's applied config.
+- **Dugdale detail** — a per-host dashboard: status and queue summary, this
+  host's lanes (with pause / continue), its recent missions, and the applied
+  config (collapsible).
 - **Exec history** — ad-hoc `letts exec` runs: list, detail (with script
   preview), and grouped view of bulk sessions, plus a download proxy for output
   artifacts.

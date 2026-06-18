@@ -7,12 +7,26 @@ import { UnavailableHostsBanner } from '@/components/UnavailableHostsBanner'
 import { FilterSelect } from '@/components/filters'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
-import { DTable, DThead, DTh, DTr, DTd } from '@/components/Table'
+import { DTable, DThead, DTh, DTr, DTd, SortableDTh } from '@/components/Table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useTableSort } from '@/hooks/useTableSort'
 import { cn } from '@/lib/utils'
 import { fmtAgo, fmtDuration } from '@/lib/format'
+import type { HostStatus } from '@/lib/types'
 
 export const Route = createFileRoute('/dugdales')({ component: Dugdales })
+
+// Sort accessors per column. host uses the dugdale id, which the natural-order
+// collator orders s2 < s10 (the default sort below).
+const sortAccessors: Record<string, (h: HostStatus) => unknown> = {
+  host: (h) => h.id,
+  labels: (h) => h.labels?.[0] ?? '',
+  version: (h) => h.version,
+  uptime: (h) => h.uptime_seconds,
+  applied: (h) => h.applied_at,
+  queued: (h) => h.queue_summary.queued,
+  running: (h) => h.queue_summary.running,
+}
 
 function Dugdales() {
   const { data, isLoading, isError, error, refetch } = useDugdales()
@@ -26,6 +40,7 @@ function Dugdales() {
   // "no filter" so the list never silently shows nothing.
   const activeLabel = label && allLabels.includes(label) ? label : undefined
   const shown = activeLabel ? hosts.filter((h) => (h.labels ?? []).includes(activeLabel)) : hosts
+  const { sort, toggle, sorted } = useTableSort(sortAccessors, { key: 'host', dir: 'asc' })
 
   return (
     <div className="flex h-full flex-col">
@@ -51,18 +66,18 @@ function Dugdales() {
           <DTable>
             <DThead>
               <tr>
-                <DTh>Host</DTh>
-                <DTh>Labels</DTh>
-                <DTh>Version</DTh>
-                <DTh>Uptime</DTh>
-                <DTh>Applied</DTh>
-                <DTh className="text-right">Queued</DTh>
-                <DTh className="text-right">Running</DTh>
+                <SortableDTh sortKey="host" sort={sort} onToggle={toggle}>Host</SortableDTh>
+                <SortableDTh sortKey="labels" sort={sort} onToggle={toggle}>Labels</SortableDTh>
+                <SortableDTh sortKey="version" sort={sort} onToggle={toggle}>Version</SortableDTh>
+                <SortableDTh sortKey="uptime" sort={sort} onToggle={toggle}>Uptime</SortableDTh>
+                <SortableDTh sortKey="applied" sort={sort} onToggle={toggle}>Applied</SortableDTh>
+                <SortableDTh sortKey="queued" sort={sort} onToggle={toggle} className="text-right">Queued</SortableDTh>
+                <SortableDTh sortKey="running" sort={sort} onToggle={toggle} className="text-right">Running</SortableDTh>
                 <DTh></DTh>
               </tr>
             </DThead>
             <tbody>
-              {shown.map((h) => (
+              {sorted(shown).map((h) => (
                 <DTr key={h.id} className={cn(!h.online && 'opacity-50')}>
                   <DTd>
                     <span className="flex items-center gap-2">

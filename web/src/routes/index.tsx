@@ -8,12 +8,30 @@ import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { HostChip } from '@/components/HostChip'
 import { LaneChip } from '@/components/LaneChip'
-import { DTable, DThead, DTh, DTr, DTd } from '@/components/Table'
+import { DTable, DThead, DTh, DTr, DTd, SortableDTh } from '@/components/Table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useTableSort } from '@/hooks/useTableSort'
+import { sortBy } from '@/lib/sort'
 import { fmtAgo, fmtDuration } from '@/lib/format'
 import type { HostStatus, LaneStatus, MergedMission } from '@/lib/types'
 
 export const Route = createFileRoute('/')({ component: Dashboard })
+
+const laneSummarySort: Record<string, (l: LaneStatus) => unknown> = {
+  host: (l) => l.host,
+  lane: (l) => l.name,
+  queued: (l) => l.queued,
+  running: (l) => l.running,
+  conc: (l) => l.concurrency,
+}
+
+const failureSort: Record<string, (m: MergedMission) => unknown> = {
+  outcome: (m) => m.outcome,
+  mission: (m) => m.mission_name || m.display_name || m.mission_id,
+  host: (m) => m.host,
+  finished: (m) => m.time_finished,
+  reason: (m) => m.fail_reason,
+}
 
 function Dashboard() {
   const { data, isLoading, isError, error, refetch } = useDashboard()
@@ -67,7 +85,7 @@ function HostStrip({ hosts }: { hosts: HostStatus[] }) {
   }
   return (
     <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(208px,1fr))]">
-      {hosts.map((h) => (
+      {sortBy(hosts, (h) => h.id, 'asc').map((h) => (
         <HostCard key={h.id} host={h} />
       ))}
     </div>
@@ -137,21 +155,22 @@ function Stat({ label, value, accent }: { label: string; value: number; accent?:
 }
 
 function LanesSummary({ lanes }: { lanes: LaneStatus[] }) {
+  const { sort, toggle, sorted } = useTableSort(laneSummarySort, { key: 'host', dir: 'asc' })
   if (lanes.length === 0) return <EmptyState title="No lanes" />
   return (
     <DTable>
       <DThead>
         <tr>
-          <DTh>Host</DTh>
-          <DTh>Lane</DTh>
-          <DTh className="text-right">Queued</DTh>
-          <DTh className="text-right">Running</DTh>
-          <DTh className="text-right">Conc.</DTh>
+          <SortableDTh sortKey="host" sort={sort} onToggle={toggle}>Host</SortableDTh>
+          <SortableDTh sortKey="lane" sort={sort} onToggle={toggle}>Lane</SortableDTh>
+          <SortableDTh sortKey="queued" sort={sort} onToggle={toggle} className="text-right">Queued</SortableDTh>
+          <SortableDTh sortKey="running" sort={sort} onToggle={toggle} className="text-right">Running</SortableDTh>
+          <SortableDTh sortKey="conc" sort={sort} onToggle={toggle} className="text-right">Conc.</SortableDTh>
           <DTh></DTh>
         </tr>
       </DThead>
       <tbody>
-        {lanes.map((l) => (
+        {sorted(lanes).map((l) => (
           <DTr key={`${l.host}/${l.name}`}>
             <DTd>
               <HostChip host={l.host} />
@@ -177,20 +196,21 @@ function LanesSummary({ lanes }: { lanes: LaneStatus[] }) {
 }
 
 function RecentFailures({ rows }: { rows: MergedMission[] }) {
+  const { sort, toggle, sorted } = useTableSort(failureSort, { key: 'finished', dir: 'desc' })
   if (rows.length === 0) return <EmptyState title="No recent failures" hint="The cluster is healthy." />
   return (
     <DTable>
       <DThead>
         <tr>
-          <DTh>Outcome</DTh>
-          <DTh>Mission</DTh>
-          <DTh>Host</DTh>
-          <DTh>Finished</DTh>
-          <DTh>Reason</DTh>
+          <SortableDTh sortKey="outcome" sort={sort} onToggle={toggle}>Outcome</SortableDTh>
+          <SortableDTh sortKey="mission" sort={sort} onToggle={toggle}>Mission</SortableDTh>
+          <SortableDTh sortKey="host" sort={sort} onToggle={toggle}>Host</SortableDTh>
+          <SortableDTh sortKey="finished" sort={sort} onToggle={toggle}>Finished</SortableDTh>
+          <SortableDTh sortKey="reason" sort={sort} onToggle={toggle}>Reason</SortableDTh>
         </tr>
       </DThead>
       <tbody>
-        {rows.map((m) => (
+        {sorted(rows).map((m) => (
           <DTr key={`${m.host}/${m.mission_id}`} className="cursor-pointer">
             <DTd>
               <FailureLink m={m}>
