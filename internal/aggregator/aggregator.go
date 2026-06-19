@@ -35,9 +35,12 @@ type Aggregator struct {
 // timeout), token-less health/version probes for unmanaged hosts, and the read
 // cache.
 func New(reg *registry.Registry, opts Options) *Aggregator {
-	newClient := func(baseURL, token string) (*lettsclient.Client, error) {
+	newClient := func(baseURL, token, proxyURL string) (*lettsclient.Client, error) {
 		return lettsclient.New(lettsclient.Options{
 			BaseURL: baseURL, Token: token, UserAgent: "arby", Timeout: opts.FanoutTimeout,
+			// Per-dugdale SOCKS5 proxy (resolved and gated by --ignore-proxy in
+			// the registry); "" dials directly.
+			ProxyURL: proxyURL,
 			// Fan-out reads poll dugdales across a stateful NAT/firewall with long
 			// idle gaps; a pooled keep-alive that the intermediary silently evicted
 			// would black-hole until the timeout and flap the host to "unavailable".
@@ -51,7 +54,7 @@ func New(reg *registry.Registry, opts Options) *Aggregator {
 	a := &Aggregator{reg: reg, byID: map[string]*lettsclient.Client{}, cache: newCache(opts.CacheTTL, opts.now)}
 	for _, h := range reg.Hosts() {
 		if h.Managed {
-			c, err := newClient(h.BaseURL, h.AdminToken)
+			c, err := newClient(h.BaseURL, h.AdminToken, h.Proxy)
 			if err != nil {
 				continue // bad base URL already screened by registry; skip defensively
 			}
@@ -62,7 +65,7 @@ func New(reg *registry.Registry, opts Options) *Aggregator {
 		// Unmanaged host: no admin token, so it can't join listings — but
 		// /v1/healthz and /v1/version are token-free, so the dashboard can still
 		// show it as online/offline with its version.
-		c, err := newClient(h.BaseURL, "")
+		c, err := newClient(h.BaseURL, "", h.Proxy)
 		if err != nil {
 			continue
 		}

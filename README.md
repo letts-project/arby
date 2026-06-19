@@ -159,7 +159,12 @@ arby looks for `letts.yaml` in this order: `--letts-config`, `$LETTS_CONFIG`, th
 | `--cache-ttl` | `3s` | In-memory aggregator cache TTL |
 | `--fanout-timeout` | `5s` | Per-dugdale timeout for fan-out reads |
 | `--theme` | `light` | Default UI theme (`light`/`dark`); users can override in-browser |
+| `--ignore-proxy` | `false` | Ignore per-dugdale `proxy:` directives in `letts.yaml` and dial dugdales directly |
 | `--version` | — | Print version and exit |
+
+arby honors a per-dugdale `proxy:` (SOCKS5) declared in `letts.yaml` — every
+fan-out and stream to that dugdale tunnels through it. Pass `--ignore-proxy` to
+ignore those directives and connect to dugdales directly.
 
 arby must be mounted at the proxy root (`/`) — serving it under a sub-path is
 not supported.

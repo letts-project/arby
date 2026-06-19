@@ -34,7 +34,7 @@ func main() {
 		fmt.Println(version.String())
 		return
 	}
-	reg, err := registry.Load(registry.Options{ConfigPath: cfg.LettsConfig, Getenv: os.LookupEnv})
+	reg, err := registry.Load(registry.Options{ConfigPath: cfg.LettsConfig, Getenv: os.LookupEnv, IgnoreProxy: cfg.IgnoreProxy})
 	if err != nil {
 		log.Fatalf("arby: load cluster: %v", err)
 	}

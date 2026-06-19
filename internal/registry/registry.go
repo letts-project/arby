@@ -17,6 +17,7 @@ type Host struct {
 	ID         string
 	BaseURL    string
 	AdminToken string
+	Proxy      string // resolved SOCKS5 proxy URL ("" = direct, or ignored)
 	Labels     []string
 	Managed    bool
 	TokenErr   error               // why the admin token didn't resolve (unmanaged only)
@@ -31,9 +32,10 @@ type Registry struct {
 
 // Options configures Load.
 type Options struct {
-	ConfigPath string                // explicit letts.yaml path; "" → auto-discover
-	Getenv     lettsconfig.EnvLookup // env lookup for ${VAR}; pass os.LookupEnv
-	UserAgent  string                // client UA; defaults to "arby"
+	ConfigPath  string                // explicit letts.yaml path; "" → auto-discover
+	Getenv      lettsconfig.EnvLookup // env lookup for ${VAR}; pass os.LookupEnv
+	UserAgent   string                // client UA; defaults to "arby"
+	IgnoreProxy bool                  // ignore per-dugdale proxy: directives, dial directly
 }
 
 // Load reads and resolves letts.yaml and builds the host registry.
@@ -76,7 +78,17 @@ func Load(opts Options) (*Registry, error) {
 		if berr != nil {
 			return nil, fmt.Errorf("resolve base url for %s: %w", d.ID, berr)
 		}
-		h := &Host{ID: d.ID, BaseURL: base, Labels: d.Labels}
+		// Resolve the per-dugdale SOCKS5 proxy once here, so both the streaming
+		// client below and the aggregator's fan-out clients share one source of
+		// truth. --ignore-proxy blanks it.
+		var proxyURL string
+		if !opts.IgnoreProxy {
+			proxyURL, berr = lettsconfig.ResolveProxy(cfg, d.ID, getenv)
+			if berr != nil {
+				return nil, fmt.Errorf("resolve proxy for %s: %w", d.ID, berr)
+			}
+		}
+		h := &Host{ID: d.ID, BaseURL: base, Proxy: proxyURL, Labels: d.Labels}
 		tok, terr := lettsconfig.ResolveToken(cfg, d.ID, lettsconfig.ScopeAdmin, getenv)
 		switch {
 		case terr != nil:
@@ -87,7 +99,7 @@ func Load(opts Options) (*Registry, error) {
 		case tok == "":
 			h.TokenErr = fmt.Errorf("admin token resolves to an empty string")
 		default:
-			c, cerr := lettsclient.New(lettsclient.Options{BaseURL: base, Token: tok, UserAgent: ua})
+			c, cerr := lettsclient.New(lettsclient.Options{BaseURL: base, Token: tok, UserAgent: ua, ProxyURL: proxyURL})
 			if cerr != nil {
 				return nil, fmt.Errorf("client for %s: %w", d.ID, cerr)
 			}

@@ -8,3 +8,4 @@ web/src/routeTree.gen.ts
 *.out
 .DS_Store
 .idea/
+/docs

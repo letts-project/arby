@@ -24,3 +24,20 @@ func TestParseDefaultsAndFlags(t *testing.T) {
 		t.Error("expected error on invalid theme")
 	}
 }
+
+func TestParseIgnoreProxy(t *testing.T) {
+	c, err := Parse([]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.IgnoreProxy {
+		t.Error("IgnoreProxy must default to false")
+	}
+	c2, err := Parse([]string{"--ignore-proxy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c2.IgnoreProxy {
+		t.Error("--ignore-proxy must set IgnoreProxy=true")
+	}
+}
