@@ -56,6 +56,51 @@ dugdales:
 	}
 }
 
+func TestLoadResolvesPerHostProxy(t *testing.T) {
+	t.Setenv("ADMIN_TOK", "secret-admin")
+	t.Setenv("PHOST", "10.0.0.9")
+	yaml := `
+auth:
+  admin_token: "${ADMIN_TOK}"
+defaults: {port: 7180}
+dugdales:
+  - {id: s1, host: server1.internal, proxy: "socks5h://127.0.0.1:1080"}
+  - {id: s2, host: server2.internal, proxy: "socks5h://${PHOST}:1080"}
+  - {id: s3, host: server3.internal}
+`
+	reg, err := Load(Options{ConfigPath: writeYAML(t, yaml), Getenv: os.LookupEnv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reg.ByID("s1").Proxy; got != "socks5h://127.0.0.1:1080" {
+		t.Errorf("s1.Proxy = %q", got)
+	}
+	if got := reg.ByID("s2").Proxy; got != "socks5h://10.0.0.9:1080" {
+		t.Errorf("s2.Proxy = %q (env not substituted?)", got)
+	}
+	if got := reg.ByID("s3").Proxy; got != "" {
+		t.Errorf("s3.Proxy = %q, want empty (no proxy configured)", got)
+	}
+}
+
+func TestIgnoreProxyBlanksPerHostProxy(t *testing.T) {
+	t.Setenv("ADMIN_TOK", "secret-admin")
+	yaml := `
+auth:
+  admin_token: "${ADMIN_TOK}"
+defaults: {port: 7180}
+dugdales:
+  - {id: s1, host: server1.internal, proxy: "socks5h://127.0.0.1:1080"}
+`
+	reg, err := Load(Options{ConfigPath: writeYAML(t, yaml), Getenv: os.LookupEnv, IgnoreProxy: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reg.ByID("s1").Proxy; got != "" {
+		t.Errorf("--ignore-proxy must blank the proxy, got %q", got)
+	}
+}
+
 func TestUnmanagedHostWhenNoAdminToken(t *testing.T) {
 	yaml := `
 defaults: {port: 7180}

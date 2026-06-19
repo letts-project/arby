@@ -16,6 +16,7 @@ type Config struct {
 	FanoutTimeout time.Duration
 	Theme         string // "light" | "dark"
 	ShowVersion   bool   // --version: print version and exit
+	IgnoreProxy   bool   // --ignore-proxy: ignore letts.yaml proxy: directives, dial directly
 }
 
 // Parse builds a Config from CLI args (excluding the program name). A request
@@ -30,7 +31,9 @@ func Parse(args []string) (Config, error) {
 		fmt.Fprint(out, "The cluster topology and tokens are read from letts.yaml — via --letts-config,\n")
 		fmt.Fprint(out, "$LETTS_CONFIG, or auto-discovery (./letts.yaml, ~/.letts/letts.yaml,\n")
 		fmt.Fprint(out, "/etc/letts/letts.yaml). arby binds loopback by default; put it behind a\n")
-		fmt.Fprint(out, "reverse proxy for authentication.\n\nFlags:\n")
+		fmt.Fprint(out, "reverse proxy for authentication.\n\n")
+		fmt.Fprint(out, "arby honors per-dugdale proxy: directives from letts.yaml; pass --ignore-proxy\n")
+		fmt.Fprint(out, "to ignore them and connect to dugdales directly.\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 	var c Config
@@ -40,6 +43,7 @@ func Parse(args []string) (Config, error) {
 	fs.DurationVar(&c.FanoutTimeout, "fanout-timeout", 5*time.Second, "per-dugdale timeout for fan-out reads")
 	fs.StringVar(&c.Theme, "theme", "light", "default UI theme: light|dark")
 	fs.BoolVar(&c.ShowVersion, "version", false, "print version and exit")
+	fs.BoolVar(&c.IgnoreProxy, "ignore-proxy", false, "ignore letts.yaml proxy: directives, dial dugdales directly")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
