@@ -83,6 +83,29 @@ dugdales:
 	}
 }
 
+func TestProxyNullOptsOutOfTemplateProxy(t *testing.T) {
+	t.Setenv("ADMIN_TOK", "secret-admin")
+	yaml := `
+auth: {admin_token: "${ADMIN_TOK}"}
+defaults: {port: 7180}
+templates:
+  k: {proxy: "socks5h://10.0.0.1:1080"}
+dugdales:
+  - {id: s1, host: server1.internal, extends: k}
+  - {id: s2, host: server2.internal, extends: k, proxy: null}
+`
+	reg, err := Load(Options{ConfigPath: writeYAML(t, yaml), Getenv: os.LookupEnv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reg.ByID("s1").Proxy; got != "socks5h://10.0.0.1:1080" {
+		t.Errorf("s1 should inherit the template proxy, got %q", got)
+	}
+	if got := reg.ByID("s2").Proxy; got != "" {
+		t.Errorf("s2 with proxy: null should connect directly, got %q", got)
+	}
+}
+
 func TestIgnoreProxyBlanksPerHostProxy(t *testing.T) {
 	t.Setenv("ADMIN_TOK", "secret-admin")
 	yaml := `
