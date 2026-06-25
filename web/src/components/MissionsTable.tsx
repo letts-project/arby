@@ -31,9 +31,7 @@ const col = createColumnHelper<MergedMission>()
 function IdCell({ id }: { id: string }) {
   return (
     <span className="flex items-center gap-1">
-      <span className="font-mono text-[12px] text-muted-foreground" title={id}>
-        {id.slice(0, 8)}…
-      </span>
+      <span className="whitespace-nowrap font-mono text-[12px] text-muted-foreground">{id}</span>
       <CopyButton value={id} label="Copy mission id" />
     </span>
   )

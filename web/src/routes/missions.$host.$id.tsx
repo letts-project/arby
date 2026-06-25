@@ -204,9 +204,7 @@ function FileGroup({
         {files.map(({ role, file }) => (
           <div key={`${role}/${file.staging_id}`} className="flex items-center gap-3 border-b px-3 py-2 last:border-0">
             <span className="w-24 shrink-0 font-mono text-[12px]">{role}</span>
-            <span className="font-mono text-[11px] text-muted-foreground" title={file.staging_id}>
-              {file.staging_id.slice(0, 10)}…
-            </span>
+            <span className="font-mono text-[11px] text-muted-foreground">{file.staging_id}</span>
             <CopyButton value={file.staging_id} label="Copy staging id" />
             <span className="ml-auto font-mono text-[11px] tabular text-muted-foreground">{fmtBytes(file.size)}</span>
             <a

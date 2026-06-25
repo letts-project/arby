@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, Inbox, Loader2 } from 'lucide-react'
 import { useMissions } from '@/hooks/useMissions'
 import { useHosts } from '@/hooks/useHosts'
+import { useLanes } from '@/hooks/useLanes'
 import { useCursorPager } from '@/hooks/useCursorPager'
 import { normalizeSearch, toFilter, type MissionSearch } from '@/lib/missionSearch'
 import { selectionKey, toBulkItems } from '@/lib/selection'
@@ -46,6 +47,14 @@ function MissionsList() {
     () => (hostsData?.hosts ?? []).filter((h) => h.managed).map((h) => h.id),
     [hostsData],
   )
+  // Lane choices come from the live lane set, scoped to the selected host when
+  // one is picked (so the dropdown only offers lanes that exist there).
+  const { data: lanesData } = useLanes()
+  const laneOptions = useMemo(() => {
+    const lanes = lanesData?.lanes ?? []
+    const scoped = search.host ? lanes.filter((l) => l.host === search.host) : lanes
+    return Array.from(new Set(scoped.map((l) => l.name))).sort()
+  }, [lanesData, search.host])
   const items = data?.items ?? []
 
   // Selection for bulk actions, reset whenever the filters/page change.
@@ -81,7 +90,13 @@ function MissionsList() {
       </PageHeader>
       <UnavailableHostsBanner hosts={data?.unavailable_hosts} reasons={data?.unavailable_reasons} />
       <div className="border-b px-4 py-2">
-        <MissionFilters search={search} hostOptions={hostOptions} onChange={patch} onClear={clear} />
+        <MissionFilters
+          search={search}
+          hostOptions={hostOptions}
+          laneOptions={laneOptions}
+          onChange={patch}
+          onClear={clear}
+        />
       </div>
 
       <div className="flex-1 overflow-auto">

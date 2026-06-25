@@ -6,7 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { routeTree } from './routeTree.gen'
 import { queryClient } from './lib/queryClient'
-import { resolveInitialTheme, applyTheme, configuredDefault } from './lib/theme'
+import { resolveInitialTheme, applyTheme, configuredDefault, watchSystemTheme } from './lib/theme'
 
 // Self-hosted type system (bundled by Vite — offline-safe for an internal tool).
 import '@fontsource/ibm-plex-sans/400.css'
@@ -19,6 +19,8 @@ import './index.css'
 // Apply the theme before first paint to avoid a flash. Precedence:
 // localStorage > ?theme > the server-configured default (arby --theme).
 applyTheme(resolveInitialTheme(window.location.search, configuredDefault()))
+// Keep the `system` preference live if the OS theme flips while the tab is open.
+watchSystemTheme()
 
 const router = createRouter({ routeTree, defaultPreload: 'intent' })
 declare module '@tanstack/react-router' {

@@ -54,7 +54,7 @@ export function SortableDTh({
         type="button"
         onClick={() => onToggle(sortKey)}
         className={cn(
-          '-mx-1 inline-flex items-center gap-1 rounded px-1 transition-colors hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          '-mx-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 transition-colors hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
           active && 'text-foreground',
         )}
       >

@@ -34,17 +34,14 @@ export function NavSidebar() {
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3.5">
         <Link
           to="/"
-          aria-label="arby — dashboard"
+          aria-label="Arby — dashboard"
           className="flex items-center gap-2 rounded-sm transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="grid size-5 place-items-center rounded-sm bg-primary font-mono text-[11px] font-bold text-primary-foreground">
-            a
+            A
           </span>
-          <span className="font-mono text-sm font-semibold tracking-tight">arby</span>
+          <span className="font-mono text-sm font-semibold tracking-tight">Arby</span>
         </Link>
-        <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-          ops
-        </span>
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 p-2">

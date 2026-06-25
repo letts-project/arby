@@ -114,13 +114,13 @@ function HostCard({ host }: { host: HostStatus }) {
         </span>
       ) : host.online ? (
         <>
-          <div className="flex gap-4">
+          <div className="flex gap-5">
             <Stat label="queued" value={host.queue_summary.queued} />
             <Stat label="running" value={host.queue_summary.running} accent />
           </div>
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>up {fmtDuration((host.uptime_seconds ?? 0) * 1000)}</span>
-            <span>applied {fmtAgo(host.applied_at ?? undefined)}</span>
+          <div className="flex items-baseline gap-1.5 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
+            <span className="font-mono tabular">{fmtDuration((host.uptime_seconds ?? 0) * 1000)}</span>
+            <span className="text-[10px] uppercase tracking-wide">uptime</span>
           </div>
         </>
       ) : (

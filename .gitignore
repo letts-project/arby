@@ -3,6 +3,7 @@
 web/dist/*
 !web/dist/.gitkeep
 web/node_modules/
+web/dev-mock.mjs
 web/src/routeTree.gen.ts
 *.test
 *.out

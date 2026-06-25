@@ -10,11 +10,13 @@ const OUTCOMES = ['success', 'failed', 'killed', 'timeout', 'crashed', 'lost', '
 export function MissionFilters({
   search,
   hostOptions,
+  laneOptions,
   onChange,
   onClear,
 }: {
   search: MissionSearch
   hostOptions: string[]
+  laneOptions: string[]
   onChange: (patch: Partial<MissionSearch>) => void
   onClear: () => void
 }) {
@@ -30,13 +32,13 @@ export function MissionFilters({
     <div className="flex flex-wrap items-center gap-2">
       <FilterSelect label="status" value={search.status} options={STATUSES} onChange={(v) => onChange({ status: v })} />
       <FilterSelect label="outcome" value={search.outcome} options={OUTCOMES} onChange={(v) => onChange({ outcome: v })} />
-      <TextFilter value={search.lane} placeholder="lane" onCommit={(v) => onChange({ lane: v })} />
-      <TextFilter value={search.mission} placeholder="mission name" onCommit={(v) => onChange({ mission: v })} />
       {hostOptions.length > 1 && (
         <FilterSelect label="host" value={search.host} options={hostOptions} onChange={(v) => onChange({ host: v })} />
       )}
+      <FilterSelect label="lane" value={search.lane} options={laneOptions} onChange={(v) => onChange({ lane: v })} />
+      <TextFilter value={search.mission} placeholder="mission name" onCommit={(v) => onChange({ mission: v })} />
       <FilterSelect
-        label="order"
+        label="sort"
         value={search.order}
         options={['created', 'finished']}
         onChange={(v) => onChange({ order: v as MissionSearch['order'] })}
