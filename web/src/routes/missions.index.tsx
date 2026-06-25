@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Inbox, Loader2 } from 'lucide-react'
 import { useMissions } from '@/hooks/useMissions'
 import { useHosts } from '@/hooks/useHosts'
 import { useLanes } from '@/hooks/useLanes'
+import { sortBy } from '@/lib/sort'
 import { useCursorPager } from '@/hooks/useCursorPager'
 import { normalizeSearch, toFilter, type MissionSearch } from '@/lib/missionSearch'
 import { selectionKey, toBulkItems } from '@/lib/selection'
@@ -44,7 +45,7 @@ function MissionsList() {
   // must not hide the control or shrink the choices.
   const { data: hostsData } = useHosts()
   const hostOptions = useMemo(
-    () => (hostsData?.hosts ?? []).filter((h) => h.managed).map((h) => h.id),
+    () => sortBy((hostsData?.hosts ?? []).filter((h) => h.managed).map((h) => h.id), (id) => id, 'asc'),
     [hostsData],
   )
   // Lane choices come from the live lane set, scoped to the selected host when
@@ -53,7 +54,7 @@ function MissionsList() {
   const laneOptions = useMemo(() => {
     const lanes = lanesData?.lanes ?? []
     const scoped = search.host ? lanes.filter((l) => l.host === search.host) : lanes
-    return Array.from(new Set(scoped.map((l) => l.name))).sort()
+    return sortBy(Array.from(new Set(scoped.map((l) => l.name))), (n) => n, 'asc')
   }, [lanesData, search.host])
   const items = data?.items ?? []
 

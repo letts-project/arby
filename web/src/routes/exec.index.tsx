@@ -5,6 +5,7 @@ import { useExecs } from '@/hooks/useExecs'
 import { useHosts } from '@/hooks/useHosts'
 import { useCursorPager } from '@/hooks/useCursorPager'
 import { normalizeExecSearch, toExecFilter, type ExecSearch } from '@/lib/execSearch'
+import { sortBy } from '@/lib/sort'
 import { PageHeader } from '@/components/PageHeader'
 import { UnavailableHostsBanner } from '@/components/UnavailableHostsBanner'
 import { ExecFilters } from '@/components/ExecFilters'
@@ -39,7 +40,7 @@ function ExecList() {
   // host), not from the current page (see missions.index.tsx).
   const { data: hostsData } = useHosts()
   const hostOptions = useMemo(
-    () => (hostsData?.hosts ?? []).filter((h) => h.managed).map((h) => h.id),
+    () => sortBy((hostsData?.hosts ?? []).filter((h) => h.managed).map((h) => h.id), (id) => id, 'asc'),
     [hostsData],
   )
   const items = data?.items ?? []
