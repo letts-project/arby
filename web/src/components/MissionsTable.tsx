@@ -6,6 +6,7 @@ import {
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
+  type RowData,
 } from '@tanstack/react-table'
 import { StatusBadge } from './StatusBadge'
 import { HostChip } from './HostChip'
@@ -26,6 +27,17 @@ export interface MissionSelection {
   someSelected: boolean
 }
 
+// Selection is read from table meta (not closed over by the column defs) so the
+// columns can be memoized ONCE. Rebuilding columns each render makes TanStack's
+// flexRender treat every cell fn as a fresh component type and remount the whole
+// cell subtree — which would tear down an open row menu/dialog on the next
+// re-render (e.g. when a background poll or the interaction lock fires).
+declare module '@tanstack/react-table' {
+  interface TableMeta<TData extends RowData> {
+    selection?: MissionSelection
+  }
+}
+
 const col = createColumnHelper<MergedMission>()
 
 function IdCell({ id }: { id: string }) {
@@ -42,6 +54,9 @@ function IdCell({ id }: { id: string }) {
 export function MissionsTable({ rows, selection }: { rows: MergedMission[]; selection?: MissionSelection }) {
   const navigate = useNavigate()
 
+  // Stable columns: depend only on whether a selection model exists, never on
+  // its (per-render) identity. The checkbox column reads live state from meta.
+  const hasSelection = !!selection
   const columns = useMemo(() => {
     const base: ColumnDef<MergedMission, unknown>[] = [
       col.accessor('status', { header: 'Status', cell: (c) => <StatusBadge mission={c.row.original} /> }),
@@ -64,31 +79,39 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
       col.display({ id: 'actions', header: '', cell: (c) => <MissionRowActions mission={c.row.original} /> }),
     ] as ColumnDef<MergedMission, unknown>[]
 
-    if (!selection) return base
+    if (!hasSelection) return base
 
     const selectCol = col.display({
       id: 'select',
-      header: () => (
-        <span onClick={(e) => e.stopPropagation()}>
-          <Checkbox
-            aria-label="Select all"
-            checked={selection.allSelected ? true : selection.someSelected ? 'indeterminate' : false}
-            onCheckedChange={() => selection.toggleAll()}
-          />
-        </span>
-      ),
-      cell: (c) => (
-        <span onClick={(e) => e.stopPropagation()}>
-          <Checkbox
-            aria-label="Select mission"
-            checked={selection.isSelected(c.row.original)}
-            onCheckedChange={() => selection.toggle(c.row.original)}
-          />
-        </span>
-      ),
+      header: ({ table }) => {
+        const sel = table.options.meta?.selection
+        if (!sel) return null
+        return (
+          <span onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              aria-label="Select all"
+              checked={sel.allSelected ? true : sel.someSelected ? 'indeterminate' : false}
+              onCheckedChange={() => sel.toggleAll()}
+            />
+          </span>
+        )
+      },
+      cell: ({ row, table }) => {
+        const sel = table.options.meta?.selection
+        if (!sel) return null
+        return (
+          <span onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              aria-label="Select mission"
+              checked={sel.isSelected(row.original)}
+              onCheckedChange={() => sel.toggle(row.original)}
+            />
+          </span>
+        )
+      },
     }) as ColumnDef<MergedMission, unknown>
     return [selectCol, ...base]
-  }, [selection])
+  }, [hasSelection])
 
   // Stable per-mission row id (not the array index) so a background refetch that
   // reorders or inserts rows doesn't remount cells — open menus/dialogs survive.
@@ -97,6 +120,7 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
     columns,
     getRowId: (m) => `${m.host}/${m.mission_id}`,
     getCoreRowModel: getCoreRowModel(),
+    meta: { selection },
   })
 
   return (
