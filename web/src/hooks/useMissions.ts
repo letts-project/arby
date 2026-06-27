@@ -1,5 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
+import { useInteractionLocked } from '@/lib/interactionLock'
 import type { MissionsPage } from '@/lib/types'
 
 export interface MissionsFilter {
@@ -16,10 +17,11 @@ export interface MissionsFilter {
 /** Cursor-paginated mission list, polled every 5s; keeps the prior page during
  *  refetch so pagination doesn't flicker. */
 export function useMissions(filter: MissionsFilter) {
+  const paused = useInteractionLocked()
   return useQuery({
     queryKey: ['missions', filter],
     queryFn: () => apiGet<MissionsPage>('/api/missions', { ...filter }),
-    refetchInterval: 5000,
+    refetchInterval: paused ? false : 5000,
     placeholderData: keepPreviousData,
   })
 }

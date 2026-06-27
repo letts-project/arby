@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MoreHorizontal, RotateCw, Trash2, OctagonX } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useMissionActions } from '@/hooks/useMissionActions'
+import { acquireInteractionLock } from '@/lib/interactionLock'
 import { errorMessage } from '@/lib/api'
 import type { Mission } from '@/lib/types'
 
@@ -42,8 +43,18 @@ export function MissionRowActions({
   align?: 'start' | 'end'
 }) {
   const { restart, kill, del } = useMissionActions()
+  const [menuOpen, setMenuOpen] = useState(false)
   const [confirm, setConfirm] = useState<null | 'restart' | 'kill' | 'delete'>(null)
   const [force, setForce] = useState(false)
+
+  // While the menu or a confirm dialog is open, pause list polling so a
+  // background refetch can't reorder the table and tear down this row (closing
+  // the menu, or dismissing a Kill/Delete modal the user just opened).
+  const overlayOpen = menuOpen || confirm !== null
+  useEffect(() => {
+    if (!overlayOpen) return
+    return acquireInteractionLock()
+  }, [overlayOpen])
   const t: Target = { host: mission.host, mission_id: mission.mission_id }
   const running = mission.status === 'running'
   const id = { host: t.host, id: t.mission_id }
@@ -82,7 +93,7 @@ export function MissionRowActions({
 
   return (
     <div onClick={(e) => e.stopPropagation()}>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <button
             type="button"

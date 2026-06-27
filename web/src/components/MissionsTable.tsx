@@ -90,7 +90,14 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
     return [selectCol, ...base]
   }, [selection])
 
-  const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() })
+  // Stable per-mission row id (not the array index) so a background refetch that
+  // reorders or inserts rows doesn't remount cells — open menus/dialogs survive.
+  const table = useReactTable({
+    data: rows,
+    columns,
+    getRowId: (m) => `${m.host}/${m.mission_id}`,
+    getCoreRowModel: getCoreRowModel(),
+  })
 
   return (
     <table className="w-full border-collapse text-[13px]">

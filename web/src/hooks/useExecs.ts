@@ -1,5 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
+import { useInteractionLocked } from '@/lib/interactionLock'
 import type { MissionsPage } from '@/lib/types'
 
 export interface ExecFilter {
@@ -14,10 +15,11 @@ export interface ExecFilter {
 
 /** Cursor-paginated exec history (kind=exec), polled every 5s. */
 export function useExecs(filter: ExecFilter) {
+  const paused = useInteractionLocked()
   return useQuery({
     queryKey: ['execs', filter],
     queryFn: () => apiGet<MissionsPage>('/api/exec', { ...filter }),
-    refetchInterval: 5000,
+    refetchInterval: paused ? false : 5000,
     placeholderData: keepPreviousData,
   })
 }
