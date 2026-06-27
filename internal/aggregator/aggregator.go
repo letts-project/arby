@@ -8,11 +8,18 @@ package aggregator
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"arby/internal/registry"
 	"letts/pkg/lettsclient"
 )
+
+// failureOutcomes are the non-success terminal outcomes surfaced in the
+// dashboard "recent failures" panel. The dugdale's outcome filter is
+// single-valued, so the dashboard queries each of these and merges (see
+// dashboard()). killed is excluded as operator-initiated, not a failure.
+var failureOutcomes = []string{"failed", "crashed", "oom", "timeout", "lost"}
 
 // Options configures the Aggregator.
 type Options struct {
@@ -303,19 +310,32 @@ func (a *Aggregator) dashboard() (any, error) {
 		hosts = append(hosts, hs)
 	}
 
-	// Recent failures across the cluster (reuses the cached Missions path).
-	fails, ferr := a.Missions(MissionsQuery{Outcome: "failed", Order: "finished", Limit: 20})
-	if ferr != nil {
-		return DashboardResult{}, ferr
+	// Recent failures across the cluster (reuses the cached Missions path). The
+	// dugdale outcome filter is single-valued, so query each non-success terminal
+	// outcome and merge by finish time. Over-fetching order=finished and filtering
+	// client-side would hide failures whenever recent successes fill the page.
+	const failLimit = 20
+	fails := []MergedMission{}
+	for _, oc := range failureOutcomes {
+		res, ferr := a.Missions(MissionsQuery{Outcome: oc, Order: "finished", Limit: failLimit})
+		if ferr != nil {
+			return DashboardResult{}, ferr
+		}
+		fails = append(fails, res.Items...)
+		// Merge each failure fan-out's unavailable set (+reasons) with the dashboard's.
+		unavailable = mergeUnavailable(unavailable, res.Unavailable)
+		reasons = mergeReasons(reasons, res.UnavailableReasons)
 	}
-	// Merge the failure fan-out's unavailable set (+reasons) with the dashboard's.
-	unavailable = mergeUnavailable(unavailable, fails.Unavailable)
-	reasons = mergeReasons(reasons, fails.UnavailableReasons)
+	// Globally order the combined failures (time_finished DESC) and keep the top N.
+	sort.SliceStable(fails, func(i, j int) bool { return orderFinished.before(fails[i], fails[j]) })
+	if len(fails) > failLimit {
+		fails = fails[:failLimit]
+	}
 
 	return DashboardResult{
 		Hosts:              hosts,
 		Lanes:              lanes,
-		RecentFailures:     fails.Items,
+		RecentFailures:     fails,
 		Unavailable:        unavailable,
 		UnavailableReasons: reasons,
 	}, nil
