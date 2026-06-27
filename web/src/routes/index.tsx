@@ -12,6 +12,7 @@ import { DTable, DThead, DTh, DTr, DTd, SortableDTh } from '@/components/Table'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableSort } from '@/hooks/useTableSort'
 import { sortBy } from '@/lib/sort'
+import { cn } from '@/lib/utils'
 import { fmtAgo, fmtDuration } from '@/lib/format'
 import type { HostStatus, LaneStatus, MergedMission } from '@/lib/types'
 
@@ -93,6 +94,7 @@ function HostStrip({ hosts }: { hosts: HostStatus[] }) {
 }
 
 function HostCard({ host }: { host: HostStatus }) {
+  const hasRunning = host.online && host.managed && host.queue_summary.running > 0
   const body = (
     <>
       <div className="flex items-center gap-2">
@@ -136,7 +138,13 @@ function HostCard({ host }: { host: HostStatus }) {
     <Link
       to="/config/$host"
       params={{ host: host.id }}
-      className="group flex flex-col gap-2.5 rounded-md border bg-card p-3 transition-colors hover:border-border-strong"
+      className={cn(
+        'group flex flex-col gap-2.5 rounded-md border p-3 transition-colors',
+        // Tint cards with live work so the active hosts stand out at a glance.
+        hasRunning
+          ? 'border-status-running/40 bg-status-running/[0.07] hover:border-status-running/60'
+          : 'bg-card hover:border-border-strong',
+      )}
     >
       {body}
     </Link>
