@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import {
   createColumnHelper,
   flexRender,
@@ -44,16 +44,18 @@ function IdCell({ id }: { id: string }) {
   return (
     <span className="flex items-center gap-1">
       <span className="whitespace-nowrap font-mono text-[12px] text-muted-foreground">{id}</span>
-      <CopyButton value={id} label="Copy mission id" />
+      {/* Lifted above the row's stretched link so the copy click isn't swallowed. */}
+      <span className="relative z-10">
+        <CopyButton value={id} label="Copy mission id" />
+      </span>
     </span>
   )
 }
 
-/** Dense, clickable mission grid (TanStack Table). Rows navigate to detail; an
- *  optional selection model adds a leading checkbox column for bulk actions. */
+/** Dense, clickable mission grid (TanStack Table). Each row is a real link to
+ *  the detail page (a stretched `<Link>` overlay) so cmd/middle-click open it in
+ *  a new tab; an optional selection model adds a leading checkbox column. */
 export function MissionsTable({ rows, selection }: { rows: MergedMission[]; selection?: MissionSelection }) {
-  const navigate = useNavigate()
-
   // Stable columns: depend only on whether a selection model exists, never on
   // its (per-render) identity. The checkbox column reads live state from meta.
   const hasSelection = !!selection
@@ -76,7 +78,16 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
         header: 'Created',
         cell: (c) => <span className="whitespace-nowrap text-muted-foreground">{fmtAgo(c.getValue())}</span>,
       }),
-      col.display({ id: 'actions', header: '', cell: (c) => <MissionRowActions mission={c.row.original} /> }),
+      col.display({
+        id: 'actions',
+        header: '',
+        // Lifted above the row's stretched link so the menu stays clickable.
+        cell: (c) => (
+          <div className="relative z-10">
+            <MissionRowActions mission={c.row.original} />
+          </div>
+        ),
+      }),
     ] as ColumnDef<MergedMission, unknown>[]
 
     if (!hasSelection) return base
@@ -87,7 +98,7 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
         const sel = table.options.meta?.selection
         if (!sel) return null
         return (
-          <span onClick={(e) => e.stopPropagation()}>
+          <span className="relative z-10" onClick={(e) => e.stopPropagation()}>
             <Checkbox
               aria-label="Select all"
               checked={sel.allSelected ? true : sel.someSelected ? 'indeterminate' : false}
@@ -100,7 +111,7 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
         const sel = table.options.meta?.selection
         if (!sel) return null
         return (
-          <span onClick={(e) => e.stopPropagation()}>
+          <span className="relative z-10" onClick={(e) => e.stopPropagation()}>
             <Checkbox
               aria-label="Select mission"
               checked={sel.isSelected(row.original)}
@@ -137,37 +148,35 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
         ))}
       </thead>
       <tbody>
-        {table.getRowModel().rows.map((r) => {
-          const open = () =>
-            navigate({
-              to: '/missions/$host/$id',
-              params: { host: r.original.host, id: r.original.mission_id },
-            })
-          return (
+        {table.getRowModel().rows.map((r) => (
+          // `relative` makes the row the containing block for the stretched link
+          // below; `focus-within` highlights the row while that link is focused.
           <tr
             key={r.id}
-            tabIndex={0}
-            aria-label={`Open mission ${r.original.mission_name || r.original.display_name || r.original.mission_id}`}
-            onClick={open}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                open()
-              }
-            }}
             className={cn(
-              'cursor-pointer border-b transition-colors hover:bg-muted/40 focus:outline-none focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring',
+              'relative cursor-pointer border-b transition-colors hover:bg-muted/40 focus-within:bg-accent',
               selection?.isSelected(r.original) && 'bg-primary/5',
             )}
           >
-            {r.getVisibleCells().map((cell) => (
+            {r.getVisibleCells().map((cell, i) => (
               <td key={cell.id} className="px-3 py-1.5 align-middle">
+                {/* One stretched link per row covers the whole <tr> (anchored to
+                    the relative row, not this cell). It's a real <a href>, so
+                    cmd/ctrl/middle-click and "Open in new tab" all work, while
+                    interactive cells (checkbox, copy, actions) sit above it. */}
+                {i === 0 && (
+                  <Link
+                    to="/missions/$host/$id"
+                    params={{ host: r.original.host, id: r.original.mission_id }}
+                    aria-label={`Open mission ${r.original.mission_name || r.original.display_name || r.original.mission_id}`}
+                    className="absolute inset-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                  />
+                )}
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </td>
             ))}
           </tr>
-          )
-        })}
+        ))}
       </tbody>
     </table>
   )
