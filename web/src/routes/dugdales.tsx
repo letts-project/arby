@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { useDugdales } from '@/hooks/useDugdales'
 import { PageHeader } from '@/components/PageHeader'
@@ -29,7 +29,6 @@ const sortAccessors: Record<string, (h: HostStatus) => unknown> = {
 }
 
 function Dugdales() {
-  const navigate = useNavigate()
   const { data, isLoading, isError, error, refetch } = useDugdales()
   const hosts = data?.hosts ?? []
   const [label, setLabel] = useState<string | undefined>(undefined)
@@ -79,36 +78,30 @@ function Dugdales() {
             </DThead>
             <tbody>
               {sorted(shown).map((h) => {
-                // Managed hosts open their applied-config view; the whole row is
-                // the click target (the label chips stop propagation so they
-                // filter instead of navigating). Unmanaged hosts have no config
-                // endpoint, so their row is inert.
-                const open = h.managed
-                  ? () => navigate({ to: '/config/$host', params: { host: h.id } })
-                  : undefined
+                // Managed hosts link to their applied-config view. A stretched
+                // <Link> makes the whole row a real <a href> (so cmd/middle-click
+                // open a new tab); the label chips sit above it so they filter
+                // instead of navigating. Unmanaged hosts have no config endpoint,
+                // so their row is inert (no link).
                 return (
                   <DTr
                     key={h.id}
-                    onClick={open}
-                    onKeyDown={
-                      open
-                        ? (e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault()
-                              open()
-                            }
-                          }
-                        : undefined
-                    }
-                    tabIndex={open ? 0 : undefined}
-                    aria-label={open ? `View config for ${h.id}` : undefined}
                     className={cn(
                       !h.online && 'opacity-50',
-                      open &&
-                        'cursor-pointer focus:outline-none focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring',
+                      // `relative` anchors the stretched link; `focus-within`
+                      // highlights the row while that link is focused.
+                      h.managed && 'relative cursor-pointer focus-within:bg-accent',
                     )}
                   >
                     <DTd>
+                      {h.managed && (
+                        <Link
+                          to="/config/$host"
+                          params={{ host: h.id }}
+                          aria-label={`View config for ${h.id}`}
+                          className="absolute inset-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                        />
+                      )}
                       <span className="flex items-center gap-2">
                         <span
                           className={cn('size-2 rounded-full', h.online ? 'bg-status-success' : 'bg-status-failed')}
@@ -128,7 +121,9 @@ function Dugdales() {
                     </DTd>
                     <DTd>
                       {h.labels && h.labels.length > 0 ? (
-                        <span className="flex flex-wrap gap-1">
+                        // Lifted above the row's stretched link so a chip click
+                        // filters instead of navigating.
+                        <span className="relative z-10 flex flex-wrap gap-1">
                           {Array.from(new Set(h.labels)).map((l) => (
                             <button
                               key={l}
