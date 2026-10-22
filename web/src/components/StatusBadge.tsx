@@ -1,44 +1,46 @@
+import { Check, Circle, Clock, LoaderCircle, OctagonX, Trash2, X, Zap } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tip } from './Tip'
 import type { Mission } from '@/lib/types'
 
-const TONE = {
-  running: 'text-status-running border-status-running/30 bg-status-running/10',
-  success: 'text-status-success border-status-success/30 bg-status-success/10',
-  queued: 'text-status-queued border-status-queued/30 bg-status-queued/10',
-  failed: 'text-status-failed border-status-failed/30 bg-status-failed/10',
-  warn: 'text-status-warn border-status-warn/30 bg-status-warn/10',
-} as const
-
-/** toneFor maps a mission's status/outcome to a label and color tone. */
-function toneFor(m: Pick<Mission, 'status' | 'outcome'>): { label: string; tone: string; live?: boolean } {
-  if (m.status === 'running') return { label: 'running', tone: TONE.running, live: true }
-  if (m.status === 'queued') return { label: 'queued', tone: TONE.queued }
-  if (m.status === 'deleting') return { label: 'deleting', tone: TONE.warn }
-  const o = m.outcome ?? 'done'
-  if (o === 'success') return { label: 'success', tone: TONE.success }
-  if (o === 'killed' || o === 'timeout') return { label: o, tone: TONE.warn }
-  return { label: o, tone: TONE.failed } // failed / crashed / oom / lost
+interface Tone {
+  label: string
+  icon: LucideIcon
+  tone: string
+  spin?: boolean
 }
 
-/** A compact colored status pill. Running pulses a leading dot. */
+/** toneFor maps a mission's status/outcome to a label, glyph and colour. */
+function toneFor(m: Pick<Mission, 'status' | 'outcome'>): Tone {
+  if (m.status === 'running') return { label: 'running', icon: LoaderCircle, tone: 'text-status-running', spin: true }
+  if (m.status === 'queued') return { label: 'queued', icon: Circle, tone: 'text-status-queued' }
+  if (m.status === 'deleting') return { label: 'deleting', icon: Trash2, tone: 'text-status-warn' }
+  const o = m.outcome ?? 'done'
+  if (o === 'success') return { label: 'success', icon: Check, tone: 'text-status-success' }
+  if (o === 'killed') return { label: 'killed', icon: OctagonX, tone: 'text-status-warn' }
+  if (o === 'timeout') return { label: 'timeout', icon: Clock, tone: 'text-status-warn' }
+  if (o === 'crashed' || o === 'oom' || o === 'lost') return { label: o, icon: Zap, tone: 'text-status-failed' }
+  return { label: o, icon: X, tone: 'text-status-failed' }
+}
+
+/** Mission state as a coloured glyph and word; `iconOnly` keeps the word for
+ *  screen readers and the tooltip. */
 export function StatusBadge({
   mission,
   className,
+  iconOnly,
 }: {
   mission: Pick<Mission, 'status' | 'outcome'>
   className?: string
+  iconOnly?: boolean
 }) {
-  const { label, tone, live } = toneFor(mission)
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide',
-        tone,
-        className,
-      )}
-    >
-      {live && <span className="size-1.5 animate-pulse rounded-full bg-current" />}
-      {label}
+  const { label, icon: Icon, tone, spin } = toneFor(mission)
+  const badge = (
+    <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap font-medium', tone, className)}>
+      <Icon className={cn('size-3.5 shrink-0', spin && 'animate-spin [animation-duration:2s]')} strokeWidth={2.5} aria-hidden />
+      {iconOnly ? <span className="sr-only">{label}</span> : label}
     </span>
   )
+  return iconOnly ? <Tip label={label}>{badge}</Tip> : badge
 }

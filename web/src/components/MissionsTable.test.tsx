@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -11,6 +11,8 @@ import {
 } from '@tanstack/react-router'
 import { MissionsTable } from './MissionsTable'
 import type { MergedMission } from '@/lib/types'
+
+vi.mock('@/hooks/useLanes', () => ({ useLanes: () => ({ data: { lanes: [] } }) }))
 
 function makeRow(over: Partial<MergedMission>): MergedMission {
   return {
@@ -70,10 +72,26 @@ describe('MissionsTable', () => {
     expect(links[1]).toHaveAttribute('href', '/missions/dug2/m-2')
   })
 
-  it('keeps the in-row controls (copy id, actions menu) usable alongside the link', async () => {
+  it('keeps the in-row controls (restart, actions menu) usable alongside the link', async () => {
     await renderTable([makeRow({})])
 
-    expect(screen.getByRole('button', { name: 'Copy mission id' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restart mission' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Mission actions' })).toBeInTheDocument()
+  })
+
+  it('offers Kill instead of Restart while a mission runs', async () => {
+    await renderTable([makeRow({ status: 'running', outcome: undefined })])
+
+    expect(screen.getByRole('button', { name: 'Kill mission' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restart mission' })).toBeNull()
+  })
+
+  it('shows why a mission failed next to its input', async () => {
+    await renderTable([
+      makeRow({ outcome: 'failed', fail_message: 'upstream returned 502', input: { feed: 'catalog-3' } }),
+    ])
+
+    expect(screen.getByText('upstream returned 502')).toBeInTheDocument()
+    expect(screen.getByText('feed=catalog-3')).toBeInTheDocument()
   })
 })

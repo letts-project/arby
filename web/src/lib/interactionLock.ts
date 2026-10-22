@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 
 // A tiny ref-counted lock shared across the app. While any mission/exec action
 // menu or confirm dialog is open, the list queries pause their polling — so a
@@ -40,4 +40,20 @@ export function useInteractionLocked(): boolean {
     () => count > 0,
     () => false,
   )
+}
+
+/** Pointer handlers that hold the lock while the pointer is over an element,
+ *  so a live list does not reorder under the cursor. */
+export function useHoverLock(): { onPointerEnter: () => void; onPointerLeave: () => void } {
+  const release = useRef<(() => void) | null>(null)
+  useEffect(() => () => release.current?.(), [])
+  return {
+    onPointerEnter: () => {
+      if (!release.current) release.current = acquireInteractionLock()
+    },
+    onPointerLeave: () => {
+      release.current?.()
+      release.current = null
+    },
+  }
 }

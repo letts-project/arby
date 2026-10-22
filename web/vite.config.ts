@@ -12,12 +12,12 @@ import path from 'node:path'
 // the //go:embed all:dist directive.
 export default defineConfig({
   plugins: [
-    tanstackRouter({ target: 'react', autoCodeSplitting: true }),
+    tanstackRouter({ target: 'react' }),
     react(),
     tailwindcss(),
   ],
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
-  build: { outDir: 'dist', emptyOutDir: false },
+  build: { outDir: 'dist', emptyOutDir: false, chunkSizeWarningLimit: 1024 },
   server: {
     port: 5173,
     proxy: {

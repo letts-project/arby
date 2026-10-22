@@ -1,267 +1,153 @@
+import type { ReactNode } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Server } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useDashboard } from '@/hooks/useDashboard'
-import { PageHeader } from '@/components/PageHeader'
-import { UnavailableHostsBanner } from '@/components/UnavailableHostsBanner'
+import { useMissions } from '@/hooks/useMissions'
+import { MissionsTable } from '@/components/MissionsTable'
+import { QueuesTable } from '@/components/QueuesTable'
+import { LaneToggle } from '@/components/LaneToggle'
 import { ErrorState } from '@/components/ErrorState'
-import { EmptyState } from '@/components/EmptyState'
-import { StatusBadge } from '@/components/StatusBadge'
-import { HostChip } from '@/components/HostChip'
-import { LaneChip } from '@/components/LaneChip'
-import { DTable, DThead, DTh, DTr, DTd, SortableDTh } from '@/components/Table'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useTableSort } from '@/hooks/useTableSort'
-import { sortBy } from '@/lib/sort'
 import { cn } from '@/lib/utils'
-import { fmtAgo, fmtDuration } from '@/lib/format'
-import type { HostStatus, LaneStatus, MergedMission } from '@/lib/types'
+import type { DashboardResult } from '@/lib/types'
 
-export const Route = createFileRoute('/')({ component: Dashboard })
+export const Route = createFileRoute('/')({ component: Overview })
 
-const laneSummarySort: Record<string, (l: LaneStatus) => unknown> = {
-  host: (l) => l.host,
-  lane: (l) => l.name,
-  queued: (l) => l.queued,
-  running: (l) => l.running,
-  conc: (l) => l.concurrency,
-}
+const RUNNING_LIMIT = 50
 
-const failureSort: Record<string, (m: MergedMission) => unknown> = {
-  outcome: (m) => m.outcome,
-  mission: (m) => m.mission_name || m.display_name || m.mission_id,
-  host: (m) => m.host,
-  finished: (m) => m.time_finished,
-  reason: (m) => m.fail_reason,
-}
-
-function Dashboard() {
+function Overview() {
   const { data, isLoading, isError, error, refetch } = useDashboard()
+  const running = useMissions({ status: 'running', limit: RUNNING_LIMIT })
+  const queues = data && <QueuesTable hosts={data.hosts} lanes={data.lanes} reasons={data.unavailable_reasons} />
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader title="Dashboard" />
-      <UnavailableHostsBanner hosts={data?.unavailable_hosts} reasons={data?.unavailable_reasons} />
-      <div className="flex-1 overflow-auto p-4">
-        {isError ? (
-          <ErrorState error={error} onRetry={() => void refetch()} />
-        ) : isLoading ? (
-          <DashboardSkeleton />
-        ) : !data ? null : (
-          <div className="flex flex-col gap-6">
-            <HostStrip hosts={data.hosts ?? []} />
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Panel title="Queues by lane" count={(data.lanes ?? []).length}>
-                <LanesSummary lanes={data.lanes ?? []} />
-              </Panel>
-              <Panel title="Recent failures" count={(data.recent_failures ?? []).length}>
-                <RecentFailures rows={data.recent_failures ?? []} />
-              </Panel>
+    <div className="px-5 pt-4 pb-10">
+      <h1 className="text-[17px] font-semibold">Overview</h1>
+      {isError ? (
+        <ErrorState error={error} onRetry={() => void refetch()} />
+      ) : isLoading || !data ? (
+        <div className="mt-4 grid gap-8 xl:grid-cols-[minmax(0,1fr)_480px]">
+          <Skeleton className="h-72 rounded" />
+          <Skeleton className="h-72 rounded" />
+        </div>
+      ) : (
+        <>
+          <Attention data={data} />
+          <div className="mt-5 grid gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,1fr)_480px]">
+            <div className="min-w-0 space-y-8">
+              <Section
+                title="Running now"
+                count={running.data?.items.length}
+                more={
+                  running.data?.next_cursor ? (
+                    <Link to="/missions" search={{ state: 'running' }} className="hover:text-foreground">
+                      All running
+                    </Link>
+                  ) : undefined
+                }
+              >
+                {running.isLoading ? (
+                  <Skeleton className="h-24 rounded" />
+                ) : (running.data?.items ?? []).length === 0 ? (
+                  <p className="py-2 text-muted-foreground">Nothing is running.</p>
+                ) : (
+                  <MissionsTable rows={running.data?.items ?? []} embedded />
+                )}
+              </Section>
+              <Section title="Queues" className="xl:hidden">
+                {queues}
+              </Section>
+              <Section
+                title="Recent failures"
+                more={
+                  <Link to="/missions" search={{ state: 'failed' }} className="hover:text-foreground">
+                    All failures
+                  </Link>
+                }
+              >
+                {(data.recent_failures ?? []).length === 0 ? (
+                  <p className="py-2 text-muted-foreground">No failures.</p>
+                ) : (
+                  <MissionsTable rows={data.recent_failures} timeBy="finished" embedded />
+                )}
+              </Section>
             </div>
+            <Section title="Queues" className="hidden xl:block">
+              {queues}
+            </Section>
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   )
 }
 
-function Panel({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
+function Section({
+  title,
+  count,
+  more,
+  className,
+  children,
+}: {
+  title: string
+  count?: number
+  more?: ReactNode
+  className?: string
+  children: ReactNode
+}) {
   return (
-    <section className="overflow-hidden rounded-md border bg-card">
-      <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
-        <h2 className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
-        {count != null && <span className="font-mono text-[11px] tabular text-muted-foreground">{count}</span>}
+    <section className={cn('min-w-0', className)}>
+      <div className="mb-1 flex items-baseline gap-2">
+        <h2 className="text-[14px] font-semibold">{title}</h2>
+        {count != null && count > 0 && <span className="text-muted-foreground">{count}</span>}
+        {more && <span className="ml-auto text-muted-foreground">{more}</span>}
       </div>
       {children}
     </section>
   )
 }
 
-function HostStrip({ hosts }: { hosts: HostStatus[] }) {
-  if (hosts.length === 0) {
-    return (
-      <div className="rounded-md border bg-card">
-        <EmptyState title="No dugdales configured" hint="Check letts.yaml" icon={<Server className="size-6" />} />
-      </div>
-    )
-  }
+/** Things an operator should act on: unreachable dugdales and paused lanes
+ *  that are holding work back. */
+function Attention({ data }: { data: DashboardResult }) {
+  const down = data.hosts.filter((h) => !h.online)
+  const stuck = data.lanes.filter((l) => l.paused && l.queued > 0)
+  if (down.length === 0 && stuck.length === 0) return null
   return (
-    <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(208px,1fr))]">
-      {sortBy(hosts, (h) => h.id, 'asc').map((h) => (
-        <HostCard key={h.id} host={h} />
+    <ul className="mt-3 divide-y rounded-md border border-status-warn/40 bg-status-warn/[0.06]">
+      {down.map((h) => (
+        <li key={h.id} className="flex items-baseline gap-2 px-3 py-2">
+          <AlertTriangle className="size-3.5 shrink-0 self-center text-status-failed" />
+          <span>
+            <Link to="/dugdales/$host" params={{ host: h.id }} className="font-medium hover:underline">
+              {h.id}
+            </Link>{' '}
+            is unreachable
+          </span>
+          {data.unavailable_reasons?.[h.id] && (
+            <span className="min-w-0 truncate text-muted-foreground" title={data.unavailable_reasons[h.id]}>
+              {data.unavailable_reasons[h.id]}
+            </span>
+          )}
+        </li>
       ))}
-    </div>
-  )
-}
-
-function HostCard({ host }: { host: HostStatus }) {
-  const hasRunning = host.online && host.managed && host.queue_summary.running > 0
-  const body = (
-    <>
-      <div className="flex items-center gap-2">
-        <span
-          className={
-            'size-2 rounded-full ' + (host.online ? 'bg-status-success' : 'bg-status-failed')
-          }
-          aria-hidden
-        />
-        <span className="font-mono text-[13px] font-semibold">{host.id}</span>
-        <span className="ml-auto font-mono text-[11px] text-muted-foreground">{host.version ?? '—'}</span>
-      </div>
-      {!host.managed ? (
-        <span
-          className="py-2 text-[12px] font-medium text-muted-foreground"
-          title="No admin token for this host — arby shows health/version only; it is excluded from listings and actions."
-        >
-          {host.online ? 'unmanaged' : 'offline · unmanaged'}
-        </span>
-      ) : host.online ? (
-        <>
-          <div className="flex gap-5">
-            <Stat label="queued" value={host.queue_summary.queued} />
-            <Stat label="running" value={host.queue_summary.running} accent />
-          </div>
-          <div className="flex items-baseline gap-1.5 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
-            <span className="font-mono tabular">{fmtDuration((host.uptime_seconds ?? 0) * 1000)}</span>
-            <span className="text-[10px] uppercase tracking-wide">uptime</span>
-          </div>
-        </>
-      ) : (
-        <span className="py-2 text-[12px] font-medium text-status-failed">offline</span>
-      )}
-    </>
-  )
-  // Config is an admin endpoint — only managed hosts can link to it.
-  if (!host.managed) {
-    return <div className="flex flex-col gap-2.5 rounded-md border bg-card p-3">{body}</div>
-  }
-  return (
-    <Link
-      to="/config/$host"
-      params={{ host: host.id }}
-      className={cn(
-        'group flex flex-col gap-2.5 rounded-md border p-3 transition-colors',
-        // Tint cards with live work so the active hosts stand out at a glance.
-        hasRunning
-          ? 'border-status-running/40 bg-status-running/[0.07] hover:border-status-running/60'
-          : 'bg-card hover:border-border-strong',
-      )}
-    >
-      {body}
-    </Link>
-  )
-}
-
-function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className="flex flex-col">
-      <span className={'font-mono text-xl tabular leading-none ' + (accent ? 'text-status-running' : '')}>
-        {value}
-      </span>
-      <span className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-    </div>
-  )
-}
-
-function LanesSummary({ lanes }: { lanes: LaneStatus[] }) {
-  const { sort, toggle, sorted } = useTableSort(laneSummarySort, { key: 'host', dir: 'asc' })
-  if (lanes.length === 0) return <EmptyState title="No lanes" />
-  return (
-    <DTable>
-      <DThead>
-        <tr>
-          <SortableDTh sortKey="host" sort={sort} onToggle={toggle}>Host</SortableDTh>
-          <SortableDTh sortKey="lane" sort={sort} onToggle={toggle}>Lane</SortableDTh>
-          <SortableDTh sortKey="queued" sort={sort} onToggle={toggle} className="text-right">Queued</SortableDTh>
-          <SortableDTh sortKey="running" sort={sort} onToggle={toggle} className="text-right">Running</SortableDTh>
-          <SortableDTh sortKey="conc" sort={sort} onToggle={toggle} className="text-right">Conc.</SortableDTh>
-          <DTh></DTh>
-        </tr>
-      </DThead>
-      <tbody>
-        {sorted(lanes).map((l) => (
-          <DTr key={`${l.host}/${l.name}`}>
-            <DTd>
-              <HostChip host={l.host} />
-            </DTd>
-            <DTd>
-              <LaneChip lane={l.name} />
-            </DTd>
-            <DTd className="text-right font-mono tabular">{l.queued}</DTd>
-            <DTd className="text-right font-mono tabular text-status-running">{l.running || ''}</DTd>
-            <DTd className="text-right font-mono tabular text-muted-foreground">{l.concurrency}</DTd>
-            <DTd>
-              {l.paused && (
-                <span className="rounded border border-status-warn/30 bg-status-warn/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-status-warn">
-                  paused
-                </span>
-              )}
-            </DTd>
-          </DTr>
-        ))}
-      </tbody>
-    </DTable>
-  )
-}
-
-function RecentFailures({ rows }: { rows: MergedMission[] }) {
-  const { sort, toggle, sorted } = useTableSort(failureSort, { key: 'finished', dir: 'desc' })
-  if (rows.length === 0) return <EmptyState title="No recent failures" hint="The cluster is healthy." />
-  return (
-    <DTable>
-      <DThead>
-        <tr>
-          <SortableDTh sortKey="outcome" sort={sort} onToggle={toggle}>Outcome</SortableDTh>
-          <SortableDTh sortKey="mission" sort={sort} onToggle={toggle}>Mission</SortableDTh>
-          <SortableDTh sortKey="host" sort={sort} onToggle={toggle}>Host</SortableDTh>
-          <SortableDTh sortKey="finished" sort={sort} onToggle={toggle}>Finished</SortableDTh>
-          <SortableDTh sortKey="reason" sort={sort} onToggle={toggle}>Reason</SortableDTh>
-        </tr>
-      </DThead>
-      <tbody>
-        {sorted(rows).map((m) => (
-          <DTr key={`${m.host}/${m.mission_id}`} className="cursor-pointer">
-            <DTd>
-              <FailureLink m={m}>
-                <StatusBadge mission={m} />
-              </FailureLink>
-            </DTd>
-            <DTd className="max-w-[16rem] truncate">
-              <FailureLink m={m}>{m.mission_name || m.display_name || m.mission_id}</FailureLink>
-            </DTd>
-            <DTd>
-              <HostChip host={m.host} />
-            </DTd>
-            <DTd className="whitespace-nowrap text-muted-foreground">{fmtAgo(m.time_finished)}</DTd>
-            <DTd className="max-w-[12rem] truncate font-mono text-[11px] text-muted-foreground">
-              {m.fail_reason || '—'}
-            </DTd>
-          </DTr>
-        ))}
-      </tbody>
-    </DTable>
-  )
-}
-
-function FailureLink({ m, children }: { m: MergedMission; children: React.ReactNode }) {
-  return (
-    <Link to="/missions/$host/$id" params={{ host: m.host, id: m.mission_id }} className="block hover:text-primary">
-      {children}
-    </Link>
-  )
-}
-
-function DashboardSkeleton() {
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(208px,1fr))]">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-[104px] rounded-md" />
-        ))}
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Skeleton className="h-64 rounded-md" />
-        <Skeleton className="h-64 rounded-md" />
-      </div>
-    </div>
+      {stuck.map((l) => (
+        <li key={`${l.host}/${l.name}`} className="flex items-center gap-2 px-3 py-1.5">
+          <AlertTriangle className="size-3.5 shrink-0 text-status-warn" />
+          <span>
+            <span className="font-medium">
+              {l.host}/{l.name}
+            </span>{' '}
+            is paused with{' '}
+            <Link to="/missions" search={{ state: 'queued', host: l.host, lane: l.name }} className="underline underline-offset-2">
+              {l.queued} waiting
+            </Link>
+          </span>
+          <span className="ml-auto">
+            <LaneToggle host={l.host} lane={l.name} paused />
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }

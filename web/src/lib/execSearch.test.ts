@@ -3,20 +3,20 @@ import { normalizeExecSearch, toExecFilter } from './execSearch'
 
 describe('execSearch', () => {
   it('keeps group_id and valid enums, drops junk, clamps limit', () => {
-    expect(normalizeExecSearch({ group_id: 'g1', status: 'running', junk: 'x', limit: 5000 })).toEqual({
+    expect(normalizeExecSearch({ group_id: 'g1', state: 'running', junk: 'x', limit: 5000 })).toEqual({
       group_id: 'g1',
-      status: 'running',
+      state: 'running',
       limit: 200,
     })
-    expect(normalizeExecSearch({ outcome: 'nope' }).outcome).toBeUndefined()
+    expect(normalizeExecSearch({ state: 'failed', outcome: 'nope' })).toEqual({ state: 'failed' })
   })
 
-  it('toExecFilter passes every filter through, including host', () => {
-    expect(toExecFilter({ status: 'done', group_id: 'g1', host: 's2', cursor: 'c' })).toEqual({
+  it('toExecFilter maps the tab and passes the rest through, including host', () => {
+    expect(toExecFilter({ state: 'failed', group_id: 'g1', host: 's2' })).toEqual({
       status: 'done',
+      outcome: 'failed,timeout,crashed,oom,lost',
       group_id: 'g1',
       host: 's2',
-      cursor: 'c',
     })
   })
 })

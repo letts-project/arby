@@ -15,17 +15,12 @@ export function fmtDuration(ms?: number): string {
   return `${d}d ${h % 24}h`
 }
 
-/** fmtTime renders an absolute local timestamp (epoch ms). */
+/** fmtTime renders an absolute local timestamp (epoch ms) as YYYY-MM-DD HH:MM:SS. */
 export function fmtTime(ms?: number): string {
   if (!ms) return '—'
-  return new Date(ms).toLocaleString(undefined, {
-    year: '2-digit',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
 /** fmtAgo renders a coarse relative time: "now", "12s", "5m", "3h", "2d". */

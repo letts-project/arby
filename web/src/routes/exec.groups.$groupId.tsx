@@ -1,75 +1,85 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
 import { useExecGroup } from '@/hooks/useExecGroup'
-import { PageHeader } from '@/components/PageHeader'
-import { UnavailableHostsBanner } from '@/components/UnavailableHostsBanner'
-import { ExecTable } from '@/components/ExecTable'
+import { BackLink } from '@/components/RunDetail'
+import { StatusBadge } from '@/components/StatusBadge'
+import { Duration } from '@/components/Duration'
+import { Ago } from '@/components/Ago'
+import { OutputBlock } from '@/components/OutputBlock'
+import { MissionRowActions } from '@/components/MissionRowActions'
+import { UnavailableNote } from '@/components/UnavailableNote'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
-import { CopyButton } from '@/components/CopyButton'
 import { Skeleton } from '@/components/ui/skeleton'
+import { execCommand } from '@/lib/execGroups'
+import { failureText, isFailure } from '@/lib/missionView'
+import { sortBy } from '@/lib/sort'
 import type { ExecGroupSummary } from '@/lib/types'
 
 export const Route = createFileRoute('/exec/groups/$groupId')({ component: ExecGroupScreen })
 
+function summaryText(s: ExecGroupSummary): string {
+  const parts = [
+    s.success && `${s.success} succeeded`,
+    s.failed && `${s.failed} failed`,
+    s.running && `${s.running} running`,
+    s.queued && `${s.queued} queued`,
+  ].filter(Boolean)
+  return `${s.total} host${s.total === 1 ? '' : 's'}: ${parts.join(', ')}`
+}
+
 function ExecGroupScreen() {
   const { groupId } = Route.useParams()
   const { data, isLoading, isError, error, refetch } = useExecGroup(groupId)
+  const items = sortBy(data?.items ?? [], (m) => m.host, 'asc')
+  const command = items[0] ? execCommand(items[0]) : undefined
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader title="Exec group">
-        <span className="font-mono text-[12px] text-muted-foreground">{groupId.slice(0, 12)}…</span>
-        <CopyButton value={groupId} label="Copy group id" />
-        <Link
-          to="/exec"
-          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Exec
-        </Link>
-      </PageHeader>
-      <UnavailableHostsBanner hosts={data?.unavailable_hosts} reasons={data?.unavailable_reasons} />
-
+    <div className="px-5 pt-3 pb-10">
+      <BackLink to="/exec" label="Exec" />
       {isError ? (
         <ErrorState error={error} onRetry={() => void refetch()} />
       ) : isLoading || !data ? (
-        <div className="space-y-3 p-4">
-          <Skeleton className="h-16 rounded-md" />
-          <Skeleton className="h-48 rounded-md" />
-        </div>
+        <Skeleton className="mt-3 h-64 rounded" />
+      ) : items.length === 0 ? (
+        <EmptyState title="Nothing in this run." hint="None of the reachable dugdales has a command from this group." />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <SummaryStrip s={data.summary} />
-          <div className="flex-1 overflow-auto">
-            {(data.items ?? []).length === 0 ? (
-              <EmptyState title="No members" hint="This group has no exec missions on the reachable hosts." />
-            ) : (
-              <ExecTable rows={data.items ?? []} />
-            )}
+        <>
+          <h1 className="mt-2 font-mono text-[17px] font-semibold">{command}</h1>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-5 text-muted-foreground">
+            <span>{summaryText(data.summary)}</span>
+            <span>
+              started <Ago ms={Math.min(...items.map((m) => m.time_created ?? Infinity))} />
+            </span>
+            <span className="font-mono text-[12px]">group {groupId}</span>
+            <UnavailableNote hosts={data.unavailable_hosts} reasons={data.unavailable_reasons} />
           </div>
-        </div>
+          <div className="mt-6 max-w-6xl space-y-6">
+            {items.map((m) => (
+              <section key={`${m.host}/${m.mission_id}`}>
+                <div className="mb-1.5 flex items-center gap-4">
+                  <Link
+                    to="/exec/$host/$id"
+                    params={{ host: m.host, id: m.mission_id }}
+                    className="text-[14px] font-semibold hover:underline"
+                  >
+                    {m.host}
+                  </Link>
+                  <StatusBadge mission={m} />
+                  {m.exit_code != null && m.exit_code >= 0 && <span className="text-muted-foreground">exit code {m.exit_code}</span>}
+                  <span className="text-muted-foreground">
+                    <Duration mission={m} />
+                  </span>
+                  {isFailure(m) && (m.fail_message || m.fail_reason) && <span className="min-w-0 truncate">{failureText(m)}</span>}
+                  <div className="ml-auto">
+                    <MissionRowActions mission={m} />
+                  </div>
+                </div>
+                <OutputBlock host={m.host} id={m.mission_id} status={m.status} />
+              </section>
+            ))}
+          </div>
+        </>
       )}
-    </div>
-  )
-}
-
-function SummaryStrip({ s }: { s: ExecGroupSummary }) {
-  const stats: Array<[string, number, string]> = [
-    ['total', s.total, ''],
-    ['success', s.success, 'text-status-success'],
-    ['failed', s.failed, 'text-status-failed'],
-    ['running', s.running, 'text-status-running'],
-    ['queued', s.queued, 'text-status-queued'],
-  ]
-  return (
-    <div className="flex gap-8 border-b px-4 py-3">
-      {stats.map(([label, value, tone]) => (
-        <div key={label} className="flex flex-col">
-          <span className={`font-mono text-xl tabular leading-none ${tone}`}>{value}</span>
-          <span className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-        </div>
-      ))}
     </div>
   )
 }

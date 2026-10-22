@@ -10,7 +10,6 @@ export interface MissionsFilter {
   mission?: string
   host?: string
   order?: string
-  cursor?: string
   limit?: number
 }
 

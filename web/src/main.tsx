@@ -8,12 +8,6 @@ import { routeTree } from './routeTree.gen'
 import { queryClient } from './lib/queryClient'
 import { resolveInitialTheme, applyTheme, configuredDefault, watchSystemTheme } from './lib/theme'
 
-// Self-hosted type system (bundled by Vite — offline-safe for an internal tool).
-import '@fontsource/ibm-plex-sans/400.css'
-import '@fontsource/ibm-plex-sans/500.css'
-import '@fontsource/ibm-plex-sans/600.css'
-import '@fontsource/ibm-plex-mono/400.css'
-import '@fontsource/ibm-plex-mono/500.css'
 import './index.css'
 
 // Apply the theme before first paint to avoid a flash. Precedence:
@@ -32,7 +26,7 @@ declare module '@tanstack/react-router' {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider delayDuration={200}>
+      <TooltipProvider delayDuration={80}>
         <RouterProvider router={router} />
         <Toaster position="bottom-right" />
       </TooltipProvider>

@@ -1,20 +1,14 @@
-import { AlertTriangle } from 'lucide-react'
+import { errorMessage } from '@/lib/api'
 
-/** Centered error placeholder with the failure message and an optional retry. */
+/** Failure placeholder with the error message and an optional retry. */
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  const msg = error instanceof Error ? error.message : String(error)
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-      <AlertTriangle className="size-5 text-status-failed" />
-      <p className="text-sm font-medium text-status-failed">Failed to load</p>
-      <p className="max-w-md text-[12px] text-muted-foreground">{msg}</p>
+    <div className="flex flex-col items-start gap-1 px-5 py-10">
+      <p className="font-medium text-status-failed">Couldn’t load this.</p>
+      <p className="max-w-xl text-muted-foreground">{errorMessage(error)}</p>
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-1 rounded-md border px-2.5 py-1 text-[12px] transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Retry
+        <button type="button" onClick={onRetry} className="mt-1 underline underline-offset-4 hover:text-foreground">
+          Try again
         </button>
       )}
     </div>

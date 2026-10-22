@@ -9,13 +9,14 @@ import {
   type RowData,
 } from '@tanstack/react-table'
 import { StatusBadge } from './StatusBadge'
-import { HostChip } from './HostChip'
-import { LaneChip } from './LaneChip'
+import { Where } from './Where'
 import { Duration } from './Duration'
-import { CopyButton } from './CopyButton'
+import { Ago } from './Ago'
 import { MissionRowActions } from './MissionRowActions'
 import { Checkbox } from '@/components/ui/checkbox'
-import { fmtAgo } from '@/lib/format'
+import { useLanes } from '@/hooks/useLanes'
+import { useHoverLock } from '@/lib/interactionLock'
+import { failureText, inputSummary, isFailure, missionTitle } from '@/lib/missionView'
 import { cn } from '@/lib/utils'
 import type { MergedMission } from '@/lib/types'
 
@@ -27,61 +28,108 @@ export interface MissionSelection {
   someSelected: boolean
 }
 
-// Selection is read from table meta (not closed over by the column defs) so the
-// columns can be memoized ONCE. Rebuilding columns each render makes TanStack's
-// flexRender treat every cell fn as a fresh component type and remount the whole
-// cell subtree — which would tear down an open row menu/dialog on the next
-// re-render (e.g. when a background poll or the interaction lock fires).
+// Selection and the time column live in table meta so the column defs can be
+// memoized once: rebuilding them remounts every cell and would close an open
+// row menu or confirm dialog on the next poll.
 declare module '@tanstack/react-table' {
   interface TableMeta<TData extends RowData> {
     selection?: MissionSelection
+    timeBy?: 'created' | 'finished'
+    pausedLanes?: Set<string>
   }
 }
 
 const col = createColumnHelper<MergedMission>()
 
-function IdCell({ id }: { id: string }) {
+/** What the row is about: why it failed (if it did) and what it was given. */
+export function MissionDetails({ m }: { m: MergedMission }) {
+  const why = isFailure(m) ? failureText(m) : ''
+  const input = inputSummary(m.input)
+  if (!why && !input) return null
   return (
-    <span className="flex items-center gap-1">
-      <span className="whitespace-nowrap font-mono text-[12px] text-muted-foreground">{id}</span>
-      {/* Lifted above the row's stretched link so the copy click isn't swallowed. */}
-      <span className="relative z-10">
-        <CopyButton value={id} label="Copy mission id" />
-      </span>
+    <span className="block truncate" title={[why, input].filter(Boolean).join('\n')}>
+      {why && <span className="mr-3">{why}</span>}
+      {input && <span className="font-mono text-[12px] text-muted-foreground">{input}</span>}
     </span>
   )
 }
 
-/** Dense, clickable mission grid (TanStack Table). Each row is a real link to
- *  the detail page (a stretched `<Link>` overlay) so cmd/middle-click open it in
- *  a new tab; an optional selection model adds a leading checkbox column. */
-export function MissionsTable({ rows, selection }: { rows: MergedMission[]; selection?: MissionSelection }) {
-  // Stable columns: depend only on whether a selection model exists, never on
-  // its (per-render) identity. The checkbox column reads live state from meta.
+/** The missions grid. Each row is a real link to the detail page (a stretched
+ *  `<Link>`), so cmd/middle-click open a new tab; checkboxes and row actions
+ *  sit above it. */
+export function MissionsTable({
+  rows,
+  selection,
+  timeBy = 'created',
+  embedded = false,
+}: {
+  rows: MergedMission[]
+  selection?: MissionSelection
+  timeBy?: 'created' | 'finished'
+  /** Inside a padded page section: no sticky header, no outer gutters. */
+  embedded?: boolean
+}) {
   const hasSelection = !!selection
+  const hover = useHoverLock()
+  const { data: lanesData } = useLanes()
+  const pausedLanes = useMemo(
+    () => new Set((lanesData?.lanes ?? []).filter((l) => l.paused).map((l) => `${l.host}/${l.name}`)),
+    [lanesData],
+  )
   const columns = useMemo(() => {
     const base: ColumnDef<MergedMission, unknown>[] = [
-      col.accessor('status', { header: 'Status', cell: (c) => <StatusBadge mission={c.row.original} /> }),
-      col.accessor('host', { header: 'Host', cell: (c) => <HostChip host={c.getValue()} /> }),
-      col.accessor('lane', { header: 'Lane', cell: (c) => <LaneChip lane={c.getValue()} /> }),
+      col.accessor('status', {
+        header: 'Status',
+        meta: { className: 'w-[104px]' },
+        cell: (c) => <StatusBadge mission={c.row.original} />,
+      }),
       col.display({
         id: 'name',
         header: 'Mission',
-        cell: (c) => {
-          const m = c.row.original
-          return <span className="block max-w-[22rem] truncate">{m.mission_name || m.display_name || '—'}</span>
+        meta: { className: 'w-[1%]' },
+        cell: (c) => <span className="block max-w-[18rem] truncate font-medium">{missionTitle(c.row.original)}</span>,
+      }),
+      col.accessor('host', {
+        header: 'Where',
+        meta: { className: 'w-[1%]' },
+        cell: ({ row, table }) => {
+          const m = row.original
+          const paused = !!m.lane && m.status === 'queued' && !!table.options.meta?.pausedLanes?.has(`${m.host}/${m.lane}`)
+          return (
+            <span title={paused ? `${m.host}/${m.lane} is paused` : undefined} className={cn(paused && 'text-status-warn')}>
+              <Where host={m.host} lane={m.lane} />
+              {paused && <span className="ml-1.5">paused</span>}
+            </span>
+          )
         },
       }),
-      col.accessor('mission_id', { header: 'ID', cell: (c) => <IdCell id={c.getValue()} /> }),
-      col.display({ id: 'duration', header: 'Duration', cell: (c) => <Duration mission={c.row.original} /> }),
-      col.accessor('time_created', {
-        header: 'Created',
-        cell: (c) => <span className="whitespace-nowrap text-muted-foreground">{fmtAgo(c.getValue())}</span>,
+      col.display({
+        id: 'details',
+        header: 'Details',
+        meta: { className: 'w-full max-w-0' },
+        cell: (c) => <MissionDetails m={c.row.original} />,
+      }),
+      col.display({
+        id: 'duration',
+        header: 'Duration',
+        meta: { className: 'w-[1%] text-right' },
+        cell: (c) => <Duration mission={c.row.original} />,
+      }),
+      col.display({
+        id: 'time',
+        header: ({ table }) => (table.options.meta?.timeBy === 'finished' ? 'Finished' : 'Created'),
+        meta: { className: 'w-[1%] text-right' },
+        cell: ({ row, table }) => (
+          <Ago
+            ms={table.options.meta?.timeBy === 'finished' ? row.original.time_finished : row.original.time_created}
+            className="text-muted-foreground"
+          />
+        ),
       }),
       col.display({
         id: 'actions',
-        header: '',
-        // Lifted above the row's stretched link so the menu stays clickable.
+        header: () => <span className="sr-only">Actions</span>,
+        meta: { className: 'w-[1%] py-0' },
         cell: (c) => (
           <div className="relative z-10">
             <MissionRowActions mission={c.row.original} />
@@ -94,13 +142,14 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
 
     const selectCol = col.display({
       id: 'select',
+      meta: { className: 'w-[1%] pr-0' },
       header: ({ table }) => {
         const sel = table.options.meta?.selection
         if (!sel) return null
         return (
-          <span className="relative z-10" onClick={(e) => e.stopPropagation()}>
+          <span className="relative z-10 flex">
             <Checkbox
-              aria-label="Select all"
+              aria-label="Select all loaded missions"
               checked={sel.allSelected ? true : sel.someSelected ? 'indeterminate' : false}
               onCheckedChange={() => sel.toggleAll()}
             />
@@ -111,7 +160,7 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
         const sel = table.options.meta?.selection
         if (!sel) return null
         return (
-          <span className="relative z-10" onClick={(e) => e.stopPropagation()}>
+          <span className="relative z-10 flex" onClick={(e) => e.stopPropagation()}>
             <Checkbox
               aria-label="Select mission"
               checked={sel.isSelected(row.original)}
@@ -124,52 +173,58 @@ export function MissionsTable({ rows, selection }: { rows: MergedMission[]; sele
     return [selectCol, ...base]
   }, [hasSelection])
 
-  // Stable per-mission row id (not the array index) so a background refetch that
-  // reorders or inserts rows doesn't remount cells — open menus/dialogs survive.
   const table = useReactTable({
     data: rows,
     columns,
     getRowId: (m) => `${m.host}/${m.mission_id}`,
     getCoreRowModel: getCoreRowModel(),
-    meta: { selection },
+    meta: { selection, timeBy, pausedLanes },
   })
 
   return (
-    <table className="w-full border-collapse text-[13px]">
-      <thead className="sticky top-0 z-10 bg-background text-[11px] uppercase tracking-wide text-muted-foreground">
+    <table className="w-full table-auto border-collapse">
+      <thead className={cn('bg-background', !embedded && 'sticky top-0 z-20')}>
         {table.getHeaderGroups().map((hg) => (
           <tr key={hg.id}>
             {hg.headers.map((h) => (
-              <th key={h.id} className="border-b px-3 py-2 text-left font-medium whitespace-nowrap">
+              <th
+                key={h.id}
+                className={cn(
+                  'border-b px-3 py-2 text-left text-[12px] font-medium whitespace-nowrap text-muted-foreground',
+                  embedded ? 'first:pl-0 last:pr-0' : 'first:pl-5 last:pr-4',
+                  (h.column.columnDef.meta as { className?: string } | undefined)?.className,
+                )}
+              >
                 {flexRender(h.column.columnDef.header, h.getContext())}
               </th>
             ))}
           </tr>
         ))}
       </thead>
-      <tbody>
+      <tbody {...hover}>
         {table.getRowModel().rows.map((r) => (
-          // `relative` makes the row the containing block for the stretched link
-          // below; `focus-within` highlights the row while that link is focused.
           <tr
             key={r.id}
             className={cn(
-              'relative cursor-pointer border-b transition-colors hover:bg-muted/40 focus-within:bg-accent',
-              selection?.isSelected(r.original) && 'bg-primary/5',
+              'group/row relative border-b border-border/70 transition-colors hover:bg-muted/60 focus-within:bg-muted/60',
+              selection?.isSelected(r.original) && 'bg-status-running/[0.06] hover:bg-status-running/10',
             )}
           >
             {r.getVisibleCells().map((cell, i) => (
-              <td key={cell.id} className="px-3 py-1.5 align-middle">
-                {/* One stretched link per row covers the whole <tr> (anchored to
-                    the relative row, not this cell). It's a real <a href>, so
-                    cmd/ctrl/middle-click and "Open in new tab" all work, while
-                    interactive cells (checkbox, copy, actions) sit above it. */}
+              <td
+                key={cell.id}
+                className={cn(
+                  'h-9 px-3 align-middle whitespace-nowrap',
+                  embedded ? 'first:pl-0 last:pr-0' : 'first:pl-5 last:pr-4',
+                  (cell.column.columnDef.meta as { className?: string } | undefined)?.className,
+                )}
+              >
                 {i === 0 && (
                   <Link
-                    to="/missions/$host/$id"
+                    to={r.original.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id'}
                     params={{ host: r.original.host, id: r.original.mission_id }}
-                    aria-label={`Open mission ${r.original.mission_name || r.original.display_name || r.original.mission_id}`}
-                    className="absolute inset-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                    aria-label={`Open mission ${missionTitle(r.original)}`}
+                    className="absolute inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   />
                 )}
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}

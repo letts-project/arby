@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { applyTheme, storedPreference, type Theme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
+import { Tip } from './Tip'
 
 const OPTIONS: { value: Theme; label: string; icon: LucideIcon }[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -24,13 +25,14 @@ export function ThemeToggle() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={`Theme: ${theme}`}
-        title={`Theme: ${theme}`}
-        className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <TriggerIcon className="size-4" />
-      </DropdownMenuTrigger>
+      <Tip label={`Theme: ${theme}`} side="bottom">
+        <DropdownMenuTrigger
+          aria-label={`Theme: ${theme}`}
+          className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <TriggerIcon className="size-4" />
+        </DropdownMenuTrigger>
+      </Tip>
       <DropdownMenuContent align="end" className="min-w-[8rem]">
         {OPTIONS.map((o) => (
           <DropdownMenuItem

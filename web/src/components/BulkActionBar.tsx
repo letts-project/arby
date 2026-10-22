@@ -12,7 +12,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useMissionActions } from '@/hooks/useMissionActions'
-import { HostChip } from '@/components/HostChip'
 import { errorMessage } from '@/lib/api'
 import type { BulkItem, BulkResult } from '@/lib/types'
 
@@ -73,12 +72,10 @@ export function BulkActionBar({ items, onClear }: { items: BulkItem[]; onClear: 
   }
 
   return (
-    <div className="flex items-center gap-3 border-t bg-card px-4 py-2">
-      <span className="text-[13px] font-medium">
-        {n} selected
-      </span>
+    <div className="flex h-10 shrink-0 items-center gap-3 border-t bg-chrome px-5">
+      <span className="font-medium">{n} selected</span>
       <div className="ml-2 flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => setConfirm('restart')} disabled={pending}>
+        <Button size="sm" onClick={() => setConfirm('restart')} disabled={pending}>
           <RotateCw className="size-3.5" />
           Restart
         </Button>
@@ -90,10 +87,10 @@ export function BulkActionBar({ items, onClear }: { items: BulkItem[]; onClear: 
       <button
         type="button"
         onClick={onClear}
-        className="ml-auto inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="ml-auto inline-flex h-7 items-center gap-1 rounded-md px-2 text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <X className="size-3.5" />
-        Clear
+        Clear selection
       </button>
 
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)}>
@@ -102,14 +99,14 @@ export function BulkActionBar({ items, onClear }: { items: BulkItem[]; onClear: 
             <DialogTitle>{confirm === 'restart' ? 'Restart' : 'Delete'} {n} missions?</DialogTitle>
             <DialogDescription>
               {confirm === 'restart'
-                ? 'Each selected mission is restarted as a new mission, grouped per host.'
-                : 'Each selected mission and its artifacts are removed. This cannot be undone.'}
+                ? 'Each one runs again with the same input, as a new mission on the same dugdale. Only finished missions can be restarted.'
+                : 'Removes each record, its output and files. This cannot be undone.'}
             </DialogDescription>
           </DialogHeader>
           {confirm === 'delete' && (
-            <label className="flex items-center gap-2 text-[13px]">
+            <label className="flex items-center gap-2">
               <Checkbox checked={force} onCheckedChange={(v) => setForce(v === true)} />
-              Force (required for running missions)
+              Also kill and delete the ones still running
             </label>
           )}
           <DialogFooter>
@@ -122,7 +119,7 @@ export function BulkActionBar({ items, onClear }: { items: BulkItem[]; onClear: 
               onClick={run}
               disabled={pending}
             >
-              {confirm === 'restart' ? 'Restart all' : 'Delete all'}
+              {confirm === 'restart' ? `Restart ${n}` : `Delete ${n}`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -131,22 +128,22 @@ export function BulkActionBar({ items, onClear }: { items: BulkItem[]; onClear: 
       <Dialog open={results !== null} onOpenChange={(o) => !o && closeResults()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Results</DialogTitle>
+            <DialogTitle>Some actions failed</DialogTitle>
           </DialogHeader>
           <div className="max-h-80 overflow-auto rounded-md border">
             {(results ?? []).map((r) => (
               <div
                 key={`${r.host}/${r.id}`}
-                className="flex items-center gap-2 border-b px-3 py-1.5 text-[12px] last:border-0"
+                className="flex items-center gap-2 border-b px-3 py-1.5 last:border-0"
               >
                 <span
                   className={
                     'size-1.5 rounded-full ' + (r.ok ? 'bg-status-success' : 'bg-status-failed')
                   }
                 />
-                <HostChip host={r.host} />
-                <span className="font-mono text-[11px] text-muted-foreground">{r.id.slice(0, 12)}…</span>
-                <span className="ml-auto font-mono text-[11px]">
+                <span>{r.host}</span>
+                <span className="font-mono text-[12px] text-muted-foreground">{r.id}</span>
+                <span className="ml-auto text-[12px]">
                   {r.ok ? r.mission_id?.slice(0, 12) ?? r.status ?? 'ok' : (r.error ?? 'failed')}
                 </span>
               </div>

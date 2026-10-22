@@ -1,34 +1,39 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiMutate } from '@/lib/api'
-import type { LanesResult } from '@/lib/types'
+import type { LaneStatus } from '@/lib/types'
+
+type WithLanes = { lanes: LaneStatus[] }
+const KEYS = [['lanes'], ['dashboard']] as const
 
 /**
- * Pause / continue a lane. Optimistically flips the toggled lane's `paused` in
- * the ['lanes'] cache so the row updates instantly — the reconciling refetch
- * fans out to every dugdale and can take seconds. Rolls back on error and
- * reconciles on settle.
+ * Pause / continue a lane. Optimistically flips the lane's `paused` in every
+ * cache that lists lanes so the row updates instantly — the reconciling
+ * refetch fans out to every dugdale and can take seconds. Rolls back on error
+ * and reconciles on settle.
  */
 export function useLaneActions() {
   const qc = useQueryClient()
 
-  const setPaused = (host: string, lane: string, paused: boolean) =>
-    qc.setQueryData<LanesResult>(['lanes'], (old) =>
-      old
-        ? { ...old, lanes: old.lanes.map((l) => (l.host === host && l.name === lane ? { ...l, paused } : l)) }
-        : old,
-    )
   const settle = () => {
-    qc.invalidateQueries({ queryKey: ['lanes'] })
-    qc.invalidateQueries({ queryKey: ['dashboard'] })
+    for (const k of KEYS) qc.invalidateQueries({ queryKey: k })
   }
   const onMutate = (paused: boolean) => async (v: { host: string; lane: string }) => {
-    await qc.cancelQueries({ queryKey: ['lanes'] })
-    const prev = qc.getQueryData<LanesResult>(['lanes'])
-    setPaused(v.host, v.lane, paused)
+    const prev: [readonly string[], WithLanes | undefined][] = []
+    for (const k of KEYS) {
+      await qc.cancelQueries({ queryKey: k })
+      const old = qc.getQueryData<WithLanes>(k)
+      prev.push([k, old])
+      if (old) {
+        qc.setQueryData<WithLanes>(k, {
+          ...old,
+          lanes: old.lanes.map((l) => (l.host === v.host && l.name === v.lane ? { ...l, paused } : l)),
+        })
+      }
+    }
     return { prev }
   }
-  const onError = (_e: unknown, _v: unknown, ctx: { prev?: LanesResult } | undefined) => {
-    if (ctx?.prev) qc.setQueryData(['lanes'], ctx.prev)
+  const onError = (_e: unknown, _v: unknown, ctx: { prev: [readonly string[], WithLanes | undefined][] } | undefined) => {
+    for (const [k, old] of ctx?.prev ?? []) if (old) qc.setQueryData(k, old)
   }
 
   const pause = useMutation({

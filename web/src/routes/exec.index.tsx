@@ -1,15 +1,17 @@
-import { useMemo } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, Loader2, Terminal } from 'lucide-react'
-import { useExecs } from '@/hooks/useExecs'
+import { useEffect, useMemo } from 'react'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { useInfiniteList } from '@/hooks/useInfiniteList'
+import { useScrollTop } from '@/hooks/useScrollTop'
 import { useHosts } from '@/hooks/useHosts'
-import { useCursorPager } from '@/hooks/useCursorPager'
 import { normalizeExecSearch, toExecFilter, type ExecSearch } from '@/lib/execSearch'
+import { groupExecs } from '@/lib/execGroups'
+import { FAILURE_OUTCOMES, MISSION_STATES } from '@/lib/missionView'
 import { sortBy } from '@/lib/sort'
-import { PageHeader } from '@/components/PageHeader'
-import { UnavailableHostsBanner } from '@/components/UnavailableHostsBanner'
-import { ExecFilters } from '@/components/ExecFilters'
 import { ExecTable } from '@/components/ExecTable'
+import { FilterSelect, tabClass } from '@/components/filters'
+import { UnavailableNote } from '@/components/UnavailableNote'
+import { InfiniteTail } from '@/components/InfiniteTail'
+import { LiveState } from '@/components/LiveState'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorState } from '@/components/ErrorState'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -22,79 +24,87 @@ export const Route = createFileRoute('/exec/')({
 function ExecList() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
-  const { data, isLoading, isError, error, refetch, isFetching } = useExecs(toExecFilter(search))
+  const searchKey = JSON.stringify(search)
+  const scroll = useScrollTop()
+  const list = useInfiniteList('execs', '/api/exec', toExecFilter(search), scroll.atTop)
+  const { items, isLoading, isError, error, refetch, isFetching, isFetchingNextPage } = list
+  const patch = (p: Partial<ExecSearch>) => void navigate({ search: (prev) => ({ ...prev, ...p }) })
+  const { toTop } = scroll
+  useEffect(() => toTop(), [searchKey, toTop])
 
-  const goCursor = (cursor: string | undefined) =>
-    navigate({ search: (prev) => ({ ...prev, cursor }) })
-  const pager = useCursorPager(search.cursor, data?.next_cursor, goCursor)
-  const patch = (p: Partial<ExecSearch>) => {
-    pager.reset()
-    navigate({ search: (prev) => ({ ...prev, ...p, cursor: undefined }) })
-  }
-  const clear = () => {
-    pager.reset()
-    navigate({ search: {} })
-  }
-
-  // Filter options come from the configured host set (the server filters by
-  // host), not from the current page (see missions.index.tsx).
   const { data: hostsData } = useHosts()
   const hostOptions = useMemo(
     () => sortBy((hostsData?.hosts ?? []).filter((h) => h.managed).map((h) => h.id), (id) => id, 'asc'),
     [hostsData],
   )
-  const items = data?.items ?? []
+  const runs = useMemo(() => groupExecs(items), [items])
+  const keep = { host: search.host, group_id: search.group_id, order: search.order, limit: search.limit }
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Exec" count={items.length}>
-        {isFetching && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
-      </PageHeader>
-      <UnavailableHostsBanner hosts={data?.unavailable_hosts} reasons={data?.unavailable_reasons} />
-      <div className="border-b px-4 py-2">
-        <ExecFilters search={search} hostOptions={hostOptions} onChange={patch} onClear={clear} />
+      <div className="flex shrink-0 flex-col gap-3 border-b px-5 pt-4">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-[17px] font-semibold">Exec</h1>
+          <span className="text-muted-foreground">ad-hoc commands run with letts exec</span>
+          <LiveState fetching={isFetching && !isFetchingNextPage} held={!scroll.atTop} />
+          <UnavailableNote hosts={list.unavailableHosts} reasons={list.unavailableReasons} className="ml-auto" />
+        </div>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+          <nav className="flex items-end gap-5" aria-label="Exec state">
+            <Link to="/exec" search={keep} className={tabClass(!search.state)}>
+              All
+            </Link>
+            {MISSION_STATES.map((s) => (
+              <Link key={s.value} to="/exec" search={{ ...keep, state: s.value }} className={tabClass(search.state === s.value)}>
+                {s.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="flex flex-wrap items-center gap-2 pb-2">
+            {search.state === 'failed' && (
+              <FilterSelect
+                label="Outcome"
+                anyLabel="any failure"
+                value={search.outcome}
+                options={FAILURE_OUTCOMES}
+                onChange={(v) => patch({ outcome: v })}
+              />
+            )}
+            {hostOptions.length > 1 && (
+              <FilterSelect label="Host" value={search.host} options={hostOptions} onChange={(v) => patch({ host: v })} />
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        {isError ? (
+      <div ref={scroll.ref} onScroll={scroll.onScroll} className="min-h-0 flex-1 overflow-auto">
+        {isError && items.length === 0 ? (
           <ErrorState error={error} onRetry={() => void refetch()} />
         ) : isLoading ? (
-          <div className="flex flex-col gap-2 p-4">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <Skeleton key={i} className="h-8 rounded" />
+          <div className="flex flex-col gap-2 p-5">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-7 rounded" />
             ))}
           </div>
-        ) : items.length === 0 ? (
+        ) : runs.length === 0 ? (
           <EmptyState
-            title="No exec commands match these filters"
-            hint="Ad-hoc commands run via `letts exec` appear here."
-            icon={<Terminal className="size-6" />}
+            title="No commands here."
+            hint={search.state || search.host ? 'Filters are narrowing this list.' : 'Commands run with letts exec show up here.'}
           />
         ) : (
-          <ExecTable rows={items} />
+          <>
+            <ExecTable runs={runs} />
+            <InfiniteTail
+              root={scroll.ref}
+              hasNextPage={list.hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+              isError={list.isFetchNextPageError}
+              fetchNextPage={() => void list.fetchNextPage()}
+              loaded={`${runs.length} run${runs.length === 1 ? '' : 's'}`}
+            />
+          </>
         )}
       </div>
-
-      <footer className="flex h-10 shrink-0 items-center justify-end gap-2 border-t px-4">
-        <button
-          type="button"
-          disabled={!pager.hasPrev}
-          onClick={pager.goPrev}
-          className="inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[12px] transition-colors enabled:hover:bg-accent disabled:opacity-40"
-        >
-          <ChevronLeft className="size-3.5" />
-          Prev
-        </button>
-        <button
-          type="button"
-          disabled={!pager.hasNext}
-          onClick={pager.goNext}
-          className="inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[12px] transition-colors enabled:hover:bg-accent disabled:opacity-40"
-        >
-          Next
-          <ChevronRight className="size-3.5" />
-        </button>
-      </footer>
     </div>
   )
 }
