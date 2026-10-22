@@ -107,12 +107,12 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stubDugdale {
 			}
 			return sorted[i].MissionID > sorted[j].MissionID
 		})
-		page := fetchAfter(sorted, ord, r.URL.Query().Get("cursor"), limit)
+		// Like the dugdale: fetch limit+1 and set next_cursor only when rows
+		// remain after this page.
+		page := fetchAfter(sorted, ord, r.URL.Query().Get("cursor"), limit+1)
 		next := ""
-		if len(page) == limit {
-			// dugdale sets next_cursor whenever a full page is returned; arby
-			// re-derives its own per-host cursor in mergePage, so the value here
-			// only needs to be non-empty to signal "maybe more".
+		if len(page) > limit {
+			page = page[:limit]
 			last := page[len(page)-1]
 			lc := lettsclient.ListCursor{MissionID: last.MissionID}
 			if ord == orderFinished {

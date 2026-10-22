@@ -281,3 +281,84 @@ func TestHandleMissionDetail(t *testing.T) {
 		t.Fatalf("missing mission status = %d, want 404", code)
 	}
 }
+
+func TestHandleMissionsLastPageOmitsNextCursor(t *testing.T) {
+	running := func(id string, createdMs int64) lettsclient.Mission {
+		m := mkMission(id, createdMs, 0, "")
+		m.Status = "running"
+		return m
+	}
+	stubs := map[string]*stub{
+		"s1": newStub(t, []lettsclient.Mission{running("r1", 60), running("r2", 50), running("r3", 40), mkMission("d1", 35, 0, "")}),
+		"s2": newStub(t, []lettsclient.Mission{running("r4", 30), running("r5", 20), running("r6", 10)}),
+	}
+	ts := newTestServer(t, stubs)
+
+	resp, err := http.Get(ts.URL + "/api/missions?status=running")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, body %s", resp.StatusCode, b)
+	}
+	var page aggregator.MissionsPage
+	if err := json.Unmarshal(b, &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 6 {
+		t.Fatalf("items = %v, want 6 running", missionIDs(page.Items))
+	}
+	if strings.Contains(string(b), "next_cursor") {
+		t.Errorf("body carries next_cursor on the only page:\n%s", b)
+	}
+}
+
+func TestHandleMissionsMultiOutcome(t *testing.T) {
+	stubs := map[string]*stub{
+		"s1": newStub(t, []lettsclient.Mission{
+			mkMission("f-50", 50, 500, "failed"),
+			mkMission("ok-45", 45, 450, "success"),
+			mkMission("o-30", 30, 300, "oom"),
+		}),
+		"s2": newStub(t, []lettsclient.Mission{
+			mkMission("c-40", 40, 400, "crashed"),
+			mkMission("k-20", 20, 200, "killed"),
+		}),
+	}
+	ts := newTestServer(t, stubs)
+
+	var page aggregator.MissionsPage
+	if code := getJSON(t, ts.URL+"/api/missions?outcome=failed,crashed,oom,timeout,lost&order=finished", &page); code != 200 {
+		t.Fatalf("status = %d, want 200", code)
+	}
+	if got := missionIDs(page.Items); !eqStrings(got, []string{"f-50", "c-40", "o-30"}) {
+		t.Fatalf("items = %v, want [f-50 c-40 o-30]", got)
+	}
+	for _, m := range page.Items {
+		if m.Host != "s1" && m.Host != "s2" {
+			t.Errorf("item %s host = %q, want a real host id", m.MissionID, m.Host)
+		}
+	}
+	if page.NextCursor != "" {
+		t.Errorf("next_cursor = %q, want none", page.NextCursor)
+	}
+}
+
+func TestHandleMissionsBadOutcome(t *testing.T) {
+	ts := newTestServer(t, map[string]*stub{"s1": newStub(t, nil)})
+
+	for _, oc := range []string{"bogus", "failed,bogus", "failed,,crashed", "failed,"} {
+		var body map[string]any
+		if code := getJSON(t, ts.URL+"/api/missions?outcome="+oc, &body); code != 400 {
+			t.Errorf("outcome=%s status = %d, want 400", oc, code)
+		}
+		if body["error"] != "bad_request" {
+			t.Errorf("outcome=%s error = %v, want bad_request", oc, body["error"])
+		}
+		if msg, _ := body["message"].(string); !strings.Contains(msg, "outcome") {
+			t.Errorf("outcome=%s message = %q, want it to name the outcome param", oc, msg)
+		}
+	}
+}

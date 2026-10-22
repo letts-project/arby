@@ -3,14 +3,16 @@ package aggregator
 import (
 	"io"
 	"strconv"
+	"strings"
 
 	"letts/pkg/lettsclient"
 )
 
 // ExecsQuery filters the exec list (kind=exec). Mirrors MissionsQuery plus GroupID.
-// Order is the API-boundary string ("" / "created" / "finished"); parseOrder
-// maps it to the internal sortOrder, exactly as Missions does. Host ("" = all)
-// narrows the fan-out to a single dugdale.
+// Outcome is one outcome or a comma-separated list of them. Order is the
+// API-boundary string ("" / "created" / "finished"); parseOrder maps it to the
+// internal sortOrder, exactly as Missions does. Host ("" = all) narrows the
+// fan-out to a single dugdale.
 type ExecsQuery struct {
 	Status, Outcome, GroupID string
 	Host                     string
@@ -27,9 +29,10 @@ func (q ExecsQuery) cacheKey() string {
 		"\x00host=" + q.Host + "\x00order=" + q.Order + "\x00cursor=" + q.Cursor + "\x00limit=" + strconv.Itoa(q.Limit)
 }
 
-// Execs fans out ListMissions(kind=exec) per host (using each host's prior
-// cursor), k-way-merges, and returns one page. Same MissionsPage shape and
-// cursor scheme as Missions; the result is cached under the exec-tagged key.
+// Execs fans out ListMissions(kind=exec) per host and outcome (using each
+// stream's prior cursor), k-way-merges, and returns one page. Same MissionsPage
+// shape, cursor scheme and outcome handling as Missions; the result is cached
+// under the exec-tagged key.
 //
 // The returned MissionsPage.Items aliases the cached page entry and MUST be
 // treated as read-only (shared with concurrent readers).
@@ -39,14 +42,19 @@ func (a *Aggregator) Execs(q ExecsQuery) (MissionsPage, error) {
 	if q.Limit <= 0 {
 		q.Limit = 100
 	}
-	v, err := a.cache.get(q.cacheKey(), func() (any, error) { return a.execs(q) })
+	outcomes, err := parseOutcomes(q.Outcome)
+	if err != nil {
+		return MissionsPage{}, err
+	}
+	q.Outcome = strings.Join(outcomes, ",")
+	v, err := a.cache.get(q.cacheKey(), func() (any, error) { return a.execs(q, outcomes) })
 	if err != nil {
 		return MissionsPage{}, err
 	}
 	return v.(MissionsPage), nil
 }
 
-func (a *Aggregator) execs(q ExecsQuery) (any, error) {
+func (a *Aggregator) execs(q ExecsQuery, outcomes []string) (any, error) {
 	prev, err := decodePerHostCursor(q.Cursor)
 	if err != nil {
 		return MissionsPage{}, err
@@ -57,32 +65,11 @@ func (a *Aggregator) execs(q ExecsQuery) (any, error) {
 			Status: 400, Code: "bad_request", Message: "unknown or unmanaged host",
 		}
 	}
-	order := parseOrder(q.Order)
-	results, unavailable, reasons := fanOut(hosts, func(h hostClient) ([]lettsclient.Mission, error) {
-		resp, ferr := lettsclient.ListMissions(h.Client, lettsclient.ListMissionsOpts{
-			Kind: "exec", Status: q.Status, Outcome: q.Outcome, GroupID: q.GroupID,
-			Order: q.Order, Cursor: prev[h.ID], Limit: q.Limit,
-		})
-		if ferr != nil {
-			return nil, ferr
-		}
-		// client-side belt-and-suspenders: drop any 'deleting' rows from an
-		// un-upgraded dugdale (mirrors the missions path).
-		out := resp.Missions
-		filtered := out[:0]
-		for _, m := range out {
-			if m.Status != "deleting" {
-				filtered = append(filtered, m)
-			}
-		}
-		return filtered, nil
-	})
-	perHost := map[string][]lettsclient.Mission{}
-	for host, ms := range results {
-		perHost[host] = ms
+	base := lettsclient.ListMissionsOpts{
+		Kind: "exec", Status: q.Status, GroupID: q.GroupID,
+		Order: q.Order, Limit: q.Limit,
 	}
-	items, next := mergePage(perHost, prev, order, q.Limit)
-	return MissionsPage{Items: items, NextCursor: next, Unavailable: unavailable, UnavailableReasons: reasons}, nil
+	return listMerged(hosts, outcomes, base, prev, parseOrder(q.Order)), nil
 }
 
 // ExecDetail is one exec mission plus a best-effort script preview (first 4 KiB).

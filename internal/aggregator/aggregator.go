@@ -8,7 +8,9 @@ package aggregator
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"arby/internal/registry"
@@ -16,10 +18,11 @@ import (
 )
 
 // failureOutcomes are the non-success terminal outcomes surfaced in the
-// dashboard "recent failures" panel. The dugdale's outcome filter is
-// single-valued, so the dashboard queries each of these and merges (see
-// dashboard()). killed is excluded as operator-initiated, not a failure.
+// dashboard "recent failures" panel. killed is excluded as operator-initiated.
 var failureOutcomes = []string{"failed", "crashed", "oom", "timeout", "lost"}
+
+// knownOutcomes are the terminal outcomes the dugdale's outcome filter accepts.
+var knownOutcomes = []string{"success", "failed", "killed", "timeout", "crashed", "lost", "oom"}
 
 // Options configures the Aggregator.
 type Options struct {
@@ -82,10 +85,11 @@ func New(reg *registry.Registry, opts Options) *Aggregator {
 }
 
 // MissionsQuery is the filter for Missions (mirrors /api/missions params).
-// Order is the API-boundary string ("" / "created" / "finished") so the server
-// package (which can't name the unexported sortOrder) can set it; parseOrder
-// maps it to the internal sortOrder. Host ("" = all) narrows the fan-out to a
-// single dugdale, so pagination/cursors stay correct under the filter.
+// Outcome is one outcome or a comma-separated list of them. Order is the
+// API-boundary string ("" / "created" / "finished") so the server package
+// (which can't name the unexported sortOrder) can set it; parseOrder maps it to
+// the internal sortOrder. Host ("" = all) narrows the fan-out to a single
+// dugdale, so pagination/cursors stay correct under the filter.
 type MissionsQuery struct {
 	Status, Outcome, Lane, Mission string
 	Host                           string
@@ -101,6 +105,37 @@ func parseOrder(s string) sortOrder {
 		return orderFinished
 	}
 	return orderCreated
+}
+
+// parseOutcomes splits a comma-separated outcome filter into a trimmed,
+// de-duplicated, sorted list. "" → nil (no filter). An empty element or an
+// unknown outcome yields a 400 *HTTPError.
+func parseOutcomes(s string) ([]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+	var out []string
+	for _, oc := range strings.Split(s, ",") {
+		oc = strings.TrimSpace(oc)
+		if oc == "" {
+			return nil, outcomeError("outcome list has an empty element")
+		}
+		if !slices.Contains(knownOutcomes, oc) {
+			return nil, outcomeError(fmt.Sprintf("unknown outcome %q", oc))
+		}
+		if !slices.Contains(out, oc) {
+			out = append(out, oc)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func outcomeError(msg string) error {
+	return &lettsclient.HTTPError{
+		Status: 400, Code: "bad_request",
+		Message: msg + "; outcome must be one or a comma-separated list of: " + strings.Join(knownOutcomes, ", "),
+	}
 }
 
 // MissionsPage is the merged result.
@@ -135,9 +170,10 @@ func (a *Aggregator) hostsFor(host string) (hosts []hostClient, ok bool) {
 	return nil, false
 }
 
-// Missions fans out ListMissions per host (using each host's prior cursor),
-// k-way-merges, and returns one page. kind is forced to "mission". The result
-// is cached under a key derived from all query params.
+// Missions fans out ListMissions per host and outcome (using each stream's
+// prior cursor), k-way-merges, and returns one page. kind is forced to
+// "mission". The result is cached under a key derived from all query params,
+// with the outcome list normalized. An invalid outcome yields a 400 *HTTPError.
 //
 // The returned MissionsPage.Items aliases the cached page entry and MUST be
 // treated as read-only: it is shared with concurrent readers, so mutating it
@@ -149,8 +185,13 @@ func (a *Aggregator) Missions(q MissionsQuery) (MissionsPage, error) {
 	if q.Limit <= 0 {
 		q.Limit = 100
 	}
+	outcomes, err := parseOutcomes(q.Outcome)
+	if err != nil {
+		return MissionsPage{}, err
+	}
+	q.Outcome = strings.Join(outcomes, ",")
 	v, err := a.cache.get(q.cacheKey(), func() (any, error) {
-		return a.missions(q)
+		return a.missions(q, outcomes)
 	})
 	if err != nil {
 		return MissionsPage{}, err
@@ -158,7 +199,7 @@ func (a *Aggregator) Missions(q MissionsQuery) (MissionsPage, error) {
 	return v.(MissionsPage), nil
 }
 
-func (a *Aggregator) missions(q MissionsQuery) (any, error) {
+func (a *Aggregator) missions(q MissionsQuery, outcomes []string) (any, error) {
 	prev, err := decodePerHostCursor(q.Cursor)
 	if err != nil {
 		return MissionsPage{}, err
@@ -173,32 +214,66 @@ func (a *Aggregator) missions(q MissionsQuery) (any, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	order := parseOrder(q.Order)
-	results, unavailable, reasons := fanOut(hosts, func(h hostClient) ([]lettsclient.Mission, error) {
-		resp, ferr := lettsclient.ListMissions(h.Client, lettsclient.ListMissionsOpts{
-			Kind: "mission", Status: q.Status, Outcome: q.Outcome, Lane: q.Lane, Mission: q.Mission,
-			Order: q.Order, Cursor: prev[h.ID], Limit: limit,
-		})
-		if ferr != nil {
-			return nil, ferr
+	base := lettsclient.ListMissionsOpts{
+		Kind: "mission", Status: q.Status, Lane: q.Lane, Mission: q.Mission,
+		Order: q.Order, Limit: limit,
+	}
+	return listMerged(hosts, outcomes, base, prev, parseOrder(q.Order)), nil
+}
+
+// listMerged lists one page per stream — every host once per outcome, or once
+// unfiltered when outcomes is empty — and merges them into one page. base holds
+// the shared filters and limit; each stream sets its own Outcome and Cursor
+// (prev, keyed by stream key). A host is reported unavailable once when any of
+// its streams fails.
+func listMerged(hosts []hostClient, outcomes []string, base lettsclient.ListMissionsOpts, prev map[string]string, order sortOrder) MissionsPage {
+	if len(outcomes) == 0 {
+		outcomes = []string{""}
+	}
+	type streamSpec struct{ host, outcome string }
+	specs := map[string]streamSpec{}
+	var streams []hostClient
+	for _, h := range hosts {
+		for _, oc := range outcomes {
+			key := h.ID
+			if len(outcomes) > 1 {
+				key = h.ID + "|" + oc
+			}
+			specs[key] = streamSpec{host: h.ID, outcome: oc}
+			streams = append(streams, hostClient{ID: key, Client: h.Client})
 		}
-		out := resp.Missions
+	}
+	results, failed, failReasons := fanOut(streams, func(sc hostClient) (streamPage, error) {
+		spec := specs[sc.ID]
+		opts := base
+		opts.Outcome = spec.outcome
+		opts.Cursor = prev[sc.ID]
+		resp, err := lettsclient.ListMissions(sc.Client, opts)
+		if err != nil {
+			return streamPage{}, err
+		}
 		// client-side belt-and-suspenders: drop any 'deleting' rows from an
 		// un-upgraded dugdale.
-		filtered := out[:0]
-		for _, m := range out {
+		kept := resp.Missions[:0]
+		for _, m := range resp.Missions {
 			if m.Status != "deleting" {
-				filtered = append(filtered, m)
+				kept = append(kept, m)
 			}
 		}
-		return filtered, nil
+		return streamPage{host: spec.host, missions: kept, more: resp.NextCursor != ""}, nil
 	})
-	perHost := map[string][]lettsclient.Mission{}
-	for host, ms := range results {
-		perHost[host] = ms
+	var unavailable []string
+	reasons := map[string]string{}
+	for _, key := range failed {
+		host := specs[key].host
+		if _, seen := reasons[host]; !seen {
+			unavailable = append(unavailable, host)
+			reasons[host] = failReasons[key]
+		}
 	}
-	items, next := mergePage(perHost, prev, order, limit)
-	return MissionsPage{Items: items, NextCursor: next, Unavailable: unavailable, UnavailableReasons: reasons}, nil
+	sort.Strings(unavailable)
+	items, next := mergePage(results, prev, order, base.Limit)
+	return MissionsPage{Items: items, NextCursor: next, Unavailable: unavailable, UnavailableReasons: reasons}
 }
 
 // HostStatus is one dugdale's health, version, and queue summary. Managed=false
@@ -244,7 +319,7 @@ type dashboardData struct {
 }
 
 // Dashboard fans out GetDugdaleInfo, Healthz, and ListLanes per host and gathers
-// recent failures via Missions(outcome=failed, order=finished). Cached.
+// recent failures via Missions(outcome=<failureOutcomes>, order=finished). Cached.
 //
 // The returned DashboardResult aliases the cached entry (incl. its slices and
 // RecentFailures) and MUST be treated as read-only: it is shared with
@@ -310,32 +385,18 @@ func (a *Aggregator) dashboard() (any, error) {
 		hosts = append(hosts, hs)
 	}
 
-	// Recent failures across the cluster (reuses the cached Missions path). The
-	// dugdale outcome filter is single-valued, so query each non-success terminal
-	// outcome and merge by finish time. Over-fetching order=finished and filtering
-	// client-side would hide failures whenever recent successes fill the page.
 	const failLimit = 20
-	fails := []MergedMission{}
-	for _, oc := range failureOutcomes {
-		res, ferr := a.Missions(MissionsQuery{Outcome: oc, Order: "finished", Limit: failLimit})
-		if ferr != nil {
-			return DashboardResult{}, ferr
-		}
-		fails = append(fails, res.Items...)
-		// Merge each failure fan-out's unavailable set (+reasons) with the dashboard's.
-		unavailable = mergeUnavailable(unavailable, res.Unavailable)
-		reasons = mergeReasons(reasons, res.UnavailableReasons)
+	fails, ferr := a.Missions(MissionsQuery{Outcome: strings.Join(failureOutcomes, ","), Order: "finished", Limit: failLimit})
+	if ferr != nil {
+		return DashboardResult{}, ferr
 	}
-	// Globally order the combined failures (time_finished DESC) and keep the top N.
-	sort.SliceStable(fails, func(i, j int) bool { return orderFinished.before(fails[i], fails[j]) })
-	if len(fails) > failLimit {
-		fails = fails[:failLimit]
-	}
+	unavailable = mergeUnavailable(unavailable, fails.Unavailable)
+	reasons = mergeReasons(reasons, fails.UnavailableReasons)
 
 	return DashboardResult{
 		Hosts:              hosts,
 		Lanes:              lanes,
-		RecentFailures:     fails,
+		RecentFailures:     fails.Items,
 		Unavailable:        unavailable,
 		UnavailableReasons: reasons,
 	}, nil

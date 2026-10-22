@@ -30,9 +30,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleMissions serves the k-way-merged, cursor-paginated missions list across
-// the cluster. Query params: status, outcome, lane, mission, host, order
-// ("" | "created" | "finished"), cursor, limit. An invalid order or limit is a
-// 400; the per-page cap is applied by the aggregator default.
+// the cluster. Query params: status, outcome (one or a comma-separated list,
+// e.g. "failed,crashed,oom"), lane, mission, host, order ("" | "created" |
+// "finished"), cursor, limit. An invalid order, limit or outcome is a 400; the
+// per-page cap is applied by the aggregator default.
 func (s *Server) handleMissions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	order := q.Get("order")

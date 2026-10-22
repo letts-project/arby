@@ -125,9 +125,12 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stub {
 			}
 			return sorted[i].MissionID > sorted[j].MissionID
 		})
-		page := fetchAfter(sorted, finished, r.URL.Query().Get("cursor"), limit)
+		// Like the dugdale: fetch limit+1 and set next_cursor only when rows
+		// remain after this page.
+		page := fetchAfter(sorted, finished, r.URL.Query().Get("cursor"), limit+1)
 		next := ""
-		if len(page) == limit {
+		if len(page) > limit {
+			page = page[:limit]
 			last := page[len(page)-1]
 			lc := lettsclient.ListCursor{MissionID: last.MissionID}
 			if finished {

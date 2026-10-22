@@ -40,64 +40,82 @@ func (o sortOrder) before(a, b MergedMission) bool {
 	return a.MissionID > b.MissionID
 }
 
-// mergePage k-way-merges per-host pages into a single globally-ordered page of
-// at most limit items, and returns the next opaque arby cursor.
+// streamPage is one merge input: a single dugdale's list page for one outcome
+// filter (or none). more reports that the dugdale has rows after this page.
+type streamPage struct {
+	host     string
+	missions []lettsclient.Mission
+	more     bool
+}
+
+// mergePage k-way-merges per-stream pages into a single globally-ordered page of
+// at most limit items, and returns the next opaque arby cursor, or "" when there
+// is no next page.
 //
-// perHost maps host id → that host's returned missions (already sorted by the
-// host in the requested order). prevCursors maps host id → the per-host cursor
-// that was used to fetch this round (decoded from the incoming external cursor;
-// nil/empty for the first page).
+// streams maps a stream key → that stream's page (already sorted by the host in
+// the requested order). The stream key is the per_host cursor key: the host id,
+// or "host|outcome" when a query spans several outcomes. prevCursors maps stream
+// key → the dugdale cursor used to fetch this round (decoded from the incoming
+// external cursor; nil/empty for the first page).
 //
-// The next cursor is seeded from prevCursors so that hosts which contributed
-// NOTHING to this page — shadowed out of the top-N (hosts > limit), or
-// offline/unfetched — KEEP their prior position; contributing hosts
-// then overwrite with the last item accepted from them. Reusing a host's own
+// A next page exists iff the merged set was truncated to limit or some fetched
+// stream reported more rows. Its cursor is seeded from prevCursors so that
+// streams which contributed NOTHING to this page — shadowed out of the top-N, or
+// offline/unfetched — KEEP their prior position; contributing streams then
+// overwrite with the last item accepted from them. Reusing a host's own
 // returned next_cursor is wrong: it points past items dropped from the merged
 // top-N.
-func mergePage(perHost map[string][]lettsclient.Mission, prevCursors map[string]string, order sortOrder, limit int) ([]MergedMission, string) {
-	// Non-nil even when empty: these items go straight to JSON, and the SPA
-	// expects an array ("items": []), never null.
-	all := []MergedMission{}
-	for host, missions := range perHost {
-		for _, m := range missions {
-			all = append(all, MergedMission{Mission: m, Host: host})
+func mergePage(streams map[string]streamPage, prevCursors map[string]string, order sortOrder, limit int) ([]MergedMission, string) {
+	type keyed struct {
+		m   MergedMission
+		key string
+	}
+	var merged []keyed
+	more := false
+	for key, sp := range streams {
+		more = more || sp.more
+		for _, m := range sp.missions {
+			merged = append(merged, keyed{m: MergedMission{Mission: m, Host: sp.host}, key: key})
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return order.before(all[i], all[j]) })
+	sort.SliceStable(merged, func(i, j int) bool { return order.before(merged[i].m, merged[j].m) })
 
-	if limit > 0 && len(all) > limit {
-		all = all[:limit]
+	if limit > 0 && len(merged) > limit {
+		merged = merged[:limit]
+		more = true
 	}
 
-	if len(all) == 0 {
-		// Every fetched host returned nothing at/after its cursor → all hosts
-		// are exhausted at their positions → end of pages. Note: if an offline
-		// host still held a non-empty prior cursor, it is intentionally dropped
-		// here (re-encoding prevCursors would loop forever on persistently-empty
-		// rounds); offline hosts are best-effort and re-listed fresh later.
+	// Non-nil even when empty: these items go straight to JSON, and the SPA
+	// expects an array ("items": []), never null.
+	all := make([]MergedMission, len(merged))
+	for i, k := range merged {
+		all[i] = k.m
+	}
+
+	// An empty page re-encoding prevCursors would make the next request
+	// identical to this one and page forever.
+	if len(all) == 0 || !more {
 		return all, ""
 	}
 
-	// Seed with the incoming cursors so zero-contributing / offline hosts keep
-	// their prior position; contributing hosts overwrite below.
 	perHostCursor := map[string]string{}
-	for h, c := range prevCursors {
+	for k, c := range prevCursors {
 		if c != "" {
-			perHostCursor[h] = c
+			perHostCursor[k] = c
 		}
 	}
-	lastByHost := map[string]MergedMission{}
-	for _, m := range all {
-		lastByHost[m.Host] = m // page sorted DESC; last write = last accepted
+	lastByStream := map[string]MergedMission{}
+	for _, k := range merged {
+		lastByStream[k.key] = k.m // page sorted DESC; last write = last accepted
 	}
-	for host, m := range lastByHost {
+	for key, m := range lastByStream {
 		lc := lettsclient.ListCursor{MissionID: m.MissionID}
 		if order == orderFinished {
 			lc.TimeFinishedMs = order.keyOf(m.Mission)
 		} else {
 			lc.TimeCreatedMs = order.keyOf(m.Mission)
 		}
-		perHostCursor[host] = lettsclient.EncodeListCursor(lc)
+		perHostCursor[key] = lettsclient.EncodeListCursor(lc)
 	}
 	wrapper := struct {
 		PerHost map[string]string `json:"per_host"`
@@ -106,9 +124,8 @@ func mergePage(perHost map[string][]lettsclient.Mission, prevCursors map[string]
 	return all, base64.RawURLEncoding.EncodeToString(b)
 }
 
-// decodePerHostCursor parses an external arby cursor into per-host dugdale
-// cursor strings. Empty string → empty map (first page). Used by the list
-// handler to feed each host's ListMissionsOpts.Cursor.
+// decodePerHostCursor parses an external arby cursor into per-stream dugdale
+// cursor strings, keyed as in mergePage. Empty string → empty map (first page).
 func decodePerHostCursor(s string) (map[string]string, error) {
 	if s == "" {
 		return map[string]string{}, nil

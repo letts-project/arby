@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"arby/internal/aggregator"
@@ -181,5 +182,45 @@ func TestExecGroupsPathHitsGroupHandler(t *testing.T) {
 	// (host="groups", id="g1") would have returned a 404 instead.
 	if g.GroupID != "g1" {
 		t.Fatalf("group_id = %q, want g1 — route likely hit the detail handler", g.GroupID)
+	}
+}
+
+func TestExecListMultiOutcome(t *testing.T) {
+	s1 := newStub(t, nil)
+	s1.execMissions = []lettsclient.Mission{
+		mkExec("e-ok", 40, "g1", "done", "success"),
+		mkExec("e-fail", 30, "g1", "done", "failed"),
+	}
+	s2 := newStub(t, nil)
+	s2.execMissions = []lettsclient.Mission{mkExec("e-to", 35, "g2", "done", "timeout")}
+	ts := newTestServer(t, map[string]*stub{"s1": s1, "s2": s2})
+
+	var page aggregator.MissionsPage
+	if code := getJSON(t, ts.URL+"/api/exec?outcome=failed,timeout", &page); code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", code)
+	}
+	if got := missionIDs(page.Items); !eqStrings(got, []string{"e-to", "e-fail"}) {
+		t.Fatalf("exec ids = %v, want [e-to e-fail]", got)
+	}
+	if page.Items[0].Host != "s2" || page.Items[1].Host != "s1" {
+		t.Errorf("hosts = %s,%s, want s2,s1", page.Items[0].Host, page.Items[1].Host)
+	}
+	if page.NextCursor != "" {
+		t.Errorf("next_cursor = %q, want none", page.NextCursor)
+	}
+}
+
+func TestExecListBadOutcome(t *testing.T) {
+	ts := newTestServer(t, map[string]*stub{"s1": newStub(t, nil)})
+
+	var body map[string]any
+	if code := getJSON(t, ts.URL+"/api/exec?outcome=failed,,lost", &body); code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", code)
+	}
+	if body["error"] != "bad_request" {
+		t.Errorf("error = %v, want bad_request", body["error"])
+	}
+	if msg, _ := body["message"].(string); !strings.Contains(msg, "outcome") {
+		t.Errorf("message = %q, want it to name the outcome param", msg)
 	}
 }

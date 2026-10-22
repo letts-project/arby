@@ -20,9 +20,9 @@ func (s *Server) registerExecRoutes(mux *http.ServeMux) {
 }
 
 // handleExec serves the k-way-merged, cursor-paginated exec list across the
-// cluster. Query params: status, outcome, group_id, host, order
-// ("" | "created" | "finished"), cursor, limit. An invalid order or limit is a
-// 400, mirroring handleMissions.
+// cluster. Query params: status, outcome (one or a comma-separated list),
+// group_id, host, order ("" | "created" | "finished"), cursor, limit. An invalid
+// order, limit or outcome is a 400, mirroring handleMissions.
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	order := q.Get("order")

@@ -1,6 +1,8 @@
 package aggregator
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -370,5 +372,266 @@ func TestMissionRoutesToHost(t *testing.T) {
 	}
 	if he, ok := err.(*lettsclient.HTTPError); !ok || he.Status != 404 {
 		t.Errorf("missing mission err = %v (%T), want 404 HTTPError", err, err)
+	}
+}
+
+func mkStatus(id string, createdMs int64, status string) lettsclient.Mission {
+	m := mkMission(id, createdMs, 0, "")
+	m.Status = status
+	return m
+}
+
+func TestMissionsLastPageHasNoNextCursor(t *testing.T) {
+	stubs := map[string]*stubDugdale{
+		"s1": newStub(t, []lettsclient.Mission{
+			mkStatus("r1", 60, "running"), mkStatus("r2", 50, "running"), mkStatus("r3", 40, "running"),
+			mkStatus("d1", 35, "done"),
+		}),
+		"s2": newStub(t, []lettsclient.Mission{
+			mkStatus("r4", 30, "running"), mkStatus("r5", 20, "running"), mkStatus("r6", 10, "running"),
+		}),
+	}
+	a := newAgg(t, stubs)
+
+	page, err := a.Missions(MissionsQuery{Status: "running", Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 6 {
+		t.Fatalf("items = %v, want 6 running", ids(page.Items))
+	}
+	if page.NextCursor != "" {
+		t.Errorf("NextCursor = %q, want empty (all rows fit on one page)", page.NextCursor)
+	}
+
+	// Exactly limit rows across hosts, none left on any host.
+	page, err = a.Missions(MissionsQuery{Status: "running", Limit: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 6 || page.NextCursor != "" {
+		t.Errorf("limit=6: items=%v next=%q, want 6 items and no cursor", ids(page.Items), page.NextCursor)
+	}
+}
+
+func TestMissionsNextCursorFollowsDugdaleBeyondDeletingRows(t *testing.T) {
+	stubs := map[string]*stubDugdale{
+		"s1": newStub(t, []lettsclient.Mission{
+			mkMission("keep-30", 30, 0, ""),
+			mkStatus("gone-20", 20, "deleting"),
+			mkMission("keep-10", 10, 0, ""),
+		}),
+	}
+	a := newAgg(t, stubs)
+
+	p1, err := a.Missions(MissionsQuery{Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(p1.Items); !eqStr(got, []string{"keep-30"}) {
+		t.Fatalf("page1 = %v, want [keep-30]", got)
+	}
+	if p1.NextCursor == "" {
+		t.Fatal("page1 NextCursor empty, want a cursor (the dugdale reported more rows)")
+	}
+	p2, err := a.Missions(MissionsQuery{Limit: 2, Cursor: p1.NextCursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(p2.Items); !eqStr(got, []string{"keep-10"}) {
+		t.Fatalf("page2 = %v, want [keep-10]", got)
+	}
+	if p2.NextCursor != "" {
+		t.Errorf("page2 NextCursor = %q, want empty", p2.NextCursor)
+	}
+}
+
+func TestMissionsOfflineHostDoesNotKeepNextPage(t *testing.T) {
+	stubs := map[string]*stubDugdale{
+		"s1": newStub(t, []lettsclient.Mission{mkMission("s1-30", 30, 0, ""), mkMission("s1-10", 10, 0, "")}),
+		"s2": newStub(t, []lettsclient.Mission{mkMission("s2-20", 20, 0, "")}),
+	}
+	stubs["s2"].offline = true
+	a := newAgg(t, stubs)
+
+	page, err := a.Missions(MissionsQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eqStr(page.Unavailable, []string{"s2"}) {
+		t.Fatalf("Unavailable = %v, want [s2]", page.Unavailable)
+	}
+	if page.NextCursor != "" {
+		t.Errorf("NextCursor = %q, want empty", page.NextCursor)
+	}
+}
+
+func TestMissionsMultiOutcomeMergesStreams(t *testing.T) {
+	stubs := map[string]*stubDugdale{
+		"s1": newStub(t, []lettsclient.Mission{
+			mkMission("f-50", 50, 0, "failed"),
+			mkMission("ok-45", 45, 0, "success"),
+			mkMission("c-40", 40, 0, "crashed"),
+			mkMission("o-30", 30, 0, "oom"),
+		}),
+		"s2": newStub(t, []lettsclient.Mission{
+			mkMission("t-48", 48, 0, "timeout"),
+			mkMission("f-35", 35, 0, "failed"),
+			mkMission("k-20", 20, 0, "killed"),
+		}),
+	}
+	a := newAgg(t, stubs)
+
+	var got []string
+	hostOf := map[string]string{}
+	cursor := ""
+	for i := 0; i < 10; i++ {
+		p, err := a.Missions(MissionsQuery{Outcome: "oom,failed,crashed,timeout", Cursor: cursor, Limit: 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(p.Items) == 0 {
+			t.Fatalf("page %d is empty after an advertised next page", i)
+		}
+		for _, m := range p.Items {
+			got = append(got, m.MissionID)
+			hostOf[m.MissionID] = m.Host
+		}
+		if i == 0 {
+			for k := range decodeExt(t, p.NextCursor) {
+				if host, oc, ok := strings.Cut(k, "|"); !ok || (host != "s1" && host != "s2") || oc == "" {
+					t.Errorf("cursor key %q, want host|outcome", k)
+				}
+			}
+		}
+		if p.NextCursor == "" {
+			break
+		}
+		cursor = p.NextCursor
+	}
+	want := []string{"f-50", "t-48", "c-40", "f-35", "o-30"}
+	if !eqStr(got, want) {
+		t.Fatalf("multi-outcome walk = %v, want %v", got, want)
+	}
+	for id, h := range map[string]string{"f-50": "s1", "t-48": "s2", "c-40": "s1", "f-35": "s2", "o-30": "s1"} {
+		if hostOf[id] != h {
+			t.Errorf("%s host = %q, want %q", id, hostOf[id], h)
+		}
+	}
+}
+
+func TestMissionsSingleOutcomeKeepsHostCursorKeys(t *testing.T) {
+	stubs := map[string]*stubDugdale{
+		"s1": newStub(t, []lettsclient.Mission{mkMission("f-50", 50, 0, "failed"), mkMission("f-40", 40, 0, "failed")}),
+		"s2": newStub(t, []lettsclient.Mission{mkMission("f-45", 45, 0, "failed"), mkMission("f-35", 35, 0, "failed")}),
+	}
+	a := newAgg(t, stubs)
+
+	for _, oc := range []string{"failed", " failed ", "failed,failed"} {
+		p, err := a.Missions(MissionsQuery{Outcome: oc, Limit: 2})
+		if err != nil {
+			t.Fatalf("outcome %q: %v", oc, err)
+		}
+		if keys := keysOf(decodeExt(t, p.NextCursor)); !eqStr(keys, []string{"s1", "s2"}) {
+			t.Errorf("outcome %q: cursor keys = %v, want [s1 s2]", oc, keys)
+		}
+	}
+}
+
+func TestMissionsEquivalentOutcomeListsShareCache(t *testing.T) {
+	stubs := map[string]*stubDugdale{
+		"s1": newStub(t, []lettsclient.Mission{mkMission("f-50", 50, 0, "failed"), mkMission("c-40", 40, 0, "crashed")}),
+	}
+	a := newAgg(t, stubs)
+
+	first, err := a.Missions(MissionsQuery{Outcome: "failed,crashed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubs["s1"].offline = true
+	second, err := a.Missions(MissionsQuery{Outcome: " crashed,failed,failed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Unavailable) != 0 || !eqStr(ids(second.Items), ids(first.Items)) {
+		t.Errorf("second = %v unavailable=%v, want the cached %v", ids(second.Items), second.Unavailable, ids(first.Items))
+	}
+}
+
+func TestMissionsMultiOutcomeUnavailableReportsHostOnce(t *testing.T) {
+	stubs := map[string]*stubDugdale{
+		"s1": newStub(t, []lettsclient.Mission{mkMission("f-50", 50, 0, "failed")}),
+		"s2": newStub(t, []lettsclient.Mission{mkMission("c-40", 40, 0, "crashed")}),
+	}
+	stubs["s2"].offline = true
+	a := newAgg(t, stubs)
+
+	p, err := a.Missions(MissionsQuery{Outcome: "failed,crashed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eqStr(p.Unavailable, []string{"s2"}) {
+		t.Fatalf("Unavailable = %v, want [s2]", p.Unavailable)
+	}
+	if keys := keysOf(p.UnavailableReasons); !eqStr(keys, []string{"s2"}) || p.UnavailableReasons["s2"] == "" {
+		t.Errorf("UnavailableReasons = %v, want a reason keyed by s2 only", p.UnavailableReasons)
+	}
+	if got := ids(p.Items); !eqStr(got, []string{"f-50"}) {
+		t.Errorf("items = %v, want [f-50]", got)
+	}
+}
+
+func TestMissionsRejectsBadOutcome(t *testing.T) {
+	a := newAgg(t, map[string]*stubDugdale{"s1": newStub(t, nil)})
+	for _, oc := range []string{"bogus", "failed,bogus", "failed,,crashed", "failed,", " "} {
+		_, err := a.Missions(MissionsQuery{Outcome: oc})
+		he, ok := err.(*lettsclient.HTTPError)
+		if !ok || he.Status != 400 || he.Code != "bad_request" {
+			t.Errorf("outcome %q: err = %v (%T), want 400 bad_request", oc, err, err)
+		}
+	}
+}
+
+func TestDashboardRecentFailuresSpanFailureOutcomes(t *testing.T) {
+	s1 := newStub(t, []lettsclient.Mission{
+		mkMission("failed-500", 1, 500, "failed"),
+		mkMission("oom-800", 2, 800, "oom"),
+		mkMission("success-900", 3, 900, "success"),
+		mkMission("killed-850", 4, 850, "killed"),
+	})
+	s2 := newStub(t, []lettsclient.Mission{
+		mkMission("crashed-700", 5, 700, "crashed"),
+		mkMission("timeout-600", 6, 600, "timeout"),
+		mkMission("lost-650", 7, 650, "lost"),
+	})
+	a := newAgg(t, map[string]*stubDugdale{"s1": s1, "s2": s2})
+
+	d, err := a.Dashboard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"oom-800", "crashed-700", "lost-650", "timeout-600", "failed-500"}
+	if got := ids(d.RecentFailures); !eqStr(got, want) {
+		t.Fatalf("RecentFailures = %v, want %v", got, want)
+	}
+}
+
+func TestDashboardRecentFailuresCappedAt20(t *testing.T) {
+	var ms []lettsclient.Mission
+	for i := 1; i <= 25; i++ {
+		oc := failureOutcomes[i%len(failureOutcomes)]
+		ms = append(ms, mkMission(fmt.Sprintf("m-%02d", i), int64(i), int64(1000+i), oc))
+	}
+	a := newAgg(t, map[string]*stubDugdale{"s1": newStub(t, ms)})
+
+	d, err := a.Dashboard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.RecentFailures) != 20 {
+		t.Fatalf("RecentFailures len = %d, want 20", len(d.RecentFailures))
+	}
+	if d.RecentFailures[0].MissionID != "m-25" || d.RecentFailures[19].MissionID != "m-06" {
+		t.Errorf("RecentFailures = %v, want m-25 … m-06", ids(d.RecentFailures))
 	}
 }

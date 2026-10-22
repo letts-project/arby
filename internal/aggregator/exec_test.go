@@ -115,6 +115,66 @@ func TestExecsPaginatesAcrossHosts(t *testing.T) {
 	}
 }
 
+func TestExecsLastPageHasNoNextCursor(t *testing.T) {
+	s1 := newStub(t, nil)
+	s1.execMissions = []lettsclient.Mission{
+		mkExec("e-a", 30, "g1", "done", "success"),
+		mkExec("e-c", 10, "g1", "done", "failed"),
+	}
+	s2 := newStub(t, nil)
+	s2.execMissions = []lettsclient.Mission{mkExec("e-b", 20, "g2", "running", "")}
+	agg := newAgg(t, map[string]*stubDugdale{"s1": s1, "s2": s2})
+
+	page, err := agg.Execs(ExecsQuery{Limit: 3})
+	if err != nil {
+		t.Fatalf("Execs: %v", err)
+	}
+	if len(page.Items) != 3 || page.NextCursor != "" {
+		t.Fatalf("items = %v next = %q, want 3 items and no cursor", ids(page.Items), page.NextCursor)
+	}
+}
+
+func TestExecsMultiOutcome(t *testing.T) {
+	s1 := newStub(t, nil)
+	s1.execMissions = []lettsclient.Mission{
+		mkExec("e-ok", 40, "g1", "done", "success"),
+		mkExec("e-fail", 30, "g1", "done", "failed"),
+	}
+	s2 := newStub(t, nil)
+	s2.execMissions = []lettsclient.Mission{
+		mkExec("e-to", 35, "g2", "done", "timeout"),
+		mkExec("e-kill", 20, "g2", "done", "killed"),
+	}
+	agg := newAgg(t, map[string]*stubDugdale{"s1": s1, "s2": s2})
+
+	p1, err := agg.Execs(ExecsQuery{Outcome: "timeout,failed", Limit: 1})
+	if err != nil {
+		t.Fatalf("Execs: %v", err)
+	}
+	if got := ids(p1.Items); !eqStr(got, []string{"e-to"}) || p1.Items[0].Host != "s2" {
+		t.Fatalf("page1 = %v (host %q), want [e-to] from s2", got, p1.Items[0].Host)
+	}
+	if keys := keysOf(decodeExt(t, p1.NextCursor)); !eqStr(keys, []string{"s2|timeout"}) {
+		t.Errorf("page1 cursor keys = %v, want [s2|timeout]", keys)
+	}
+	p2, err := agg.Execs(ExecsQuery{Outcome: "timeout,failed", Limit: 1, Cursor: p1.NextCursor})
+	if err != nil {
+		t.Fatalf("Execs page2: %v", err)
+	}
+	if got := ids(p2.Items); !eqStr(got, []string{"e-fail"}) || p2.Items[0].Host != "s1" {
+		t.Fatalf("page2 = %v, want [e-fail] from s1", got)
+	}
+	if p2.NextCursor != "" {
+		t.Errorf("page2 NextCursor = %q, want empty", p2.NextCursor)
+	}
+
+	if _, err := agg.Execs(ExecsQuery{Outcome: "failed,nope"}); err == nil {
+		t.Fatal("unknown outcome: want error")
+	} else if he, ok := err.(*lettsclient.HTTPError); !ok || he.Status != 400 || he.Code != "bad_request" {
+		t.Errorf("unknown outcome err = %v (%T), want 400 bad_request", err, err)
+	}
+}
+
 // TestExecsGroupIDScopesRun asserts a GroupID filter is forwarded to the dugdale
 // (which scopes by group_id) so only that run's execs come back.
 func TestExecsGroupIDScopesRun(t *testing.T) {
