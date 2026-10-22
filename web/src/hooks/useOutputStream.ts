@@ -9,6 +9,8 @@ export interface OutputStreamState {
   error?: string
   /** True when old lines were dropped to honor maxLines. */
   trimmed: boolean
+  /** True once a finished mission's whole output has been read. */
+  done: boolean
 }
 
 /** Retained line cap: beyond this the oldest lines are dropped (and `trimmed`
@@ -51,6 +53,7 @@ export function useOutputStream(
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
   const [trimmed, setTrimmed] = useState(false)
+  const [done, setDone] = useState(false)
   const buf = useRef<OutputLine[]>([])
   const raf = useRef<number | null>(null)
 
@@ -61,6 +64,7 @@ export function useOutputStream(
     setLines([])
     setError(undefined)
     setTrimmed(false)
+    setDone(false)
 
     const capBuf = () => {
       if (buf.current.length > maxLines) {
@@ -135,6 +139,7 @@ export function useOutputStream(
           if (!ac.signal.aborted) setError(e instanceof Error ? e.message : String(e))
         } finally {
           setConnected(false)
+          if (!ac.signal.aborted) setDone(true)
         }
       })()
       return () => ac.abort()
@@ -166,5 +171,5 @@ export function useOutputStream(
     }
   }, [host, id, enabled, terminal])
 
-  return { lines, connected, error, trimmed }
+  return { lines, connected, error, trimmed, done }
 }

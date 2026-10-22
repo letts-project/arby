@@ -1,27 +1,28 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useCanGoBack, useRouter } from '@tanstack/react-router'
-import { ArrowLeft, Download } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, Copy, Download } from 'lucide-react'
 import { useEventStream } from '@/hooks/useEventStream'
+import { useOutputStream, type OutputStreamState } from '@/hooks/useOutputStream'
 import { StatusBadge } from './StatusBadge'
 import { Where } from './Where'
 import { Duration } from './Duration'
 import { Ago } from './Ago'
 import { CopyButton } from './CopyButton'
-import { JsonView } from './JsonView'
+import { JsonTree } from './JsonTree'
 import { LogPane } from './LogPane'
 import { EventTimeline } from './EventTimeline'
 import { MissionRowActions } from './MissionRowActions'
 import { Tip } from './Tip'
-import { fmtBytes, fmtDuration, fmtTime } from '@/lib/format'
+import { fmtBytes, fmtDuration, fmtTime, lineCount } from '@/lib/format'
 import { failureText, isFailure, missionTitle, reportedByMission } from '@/lib/missionView'
 import { cn } from '@/lib/utils'
 import type { MergedMission, MissionFile } from '@/lib/types'
 
 /**
  * The detail screen shared by missions and exec runs: what it is and what
- * happened (status, failure, progress, actions) on top, the output as the main
- * pane, and the facts (timing, input, return, files, events) beside it.
+ * happened (status, failure, progress, actions) on top, the output, return and
+ * input below it, and the facts (timing, files, events) beside them.
  */
 export function RunDetail({
   m,
@@ -37,6 +38,7 @@ export function RunDetail({
   extra?: ReactNode
 }) {
   const events = useEventStream(m.host, m.mission_id, true)
+  const out = useOutputStream(m.host, m.mission_id, { enabled: true, terminal: m.status === 'done' })
   const qc = useQueryClient()
   const finished = !!events.done
   useEffect(() => {
@@ -73,32 +75,158 @@ export function RunDetail({
         {isFailure(m) && <FailureNote m={m} />}
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,30%)]">
-        <LogPane
-          host={m.host}
-          id={m.mission_id}
-          status={m.status}
-          truncatedStdout={m.truncated_stdout}
-          truncatedStderr={m.truncated_stderr}
-          className="min-h-[320px]"
-        />
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,24%)]">
+        <RunBody m={m} out={out} />
         <aside className="min-h-0 overflow-auto border-t px-5 py-4 lg:border-t-0 lg:border-l">
           <Facts m={m} />
           {extra}
-          <Section title="Input">
-            <JsonView json={m.input} empty="No input." />
-          </Section>
-          {m.status === 'done' && (
-            <Section title="Return">
-              <JsonView json={m.return} empty="Nothing returned." />
-            </Section>
-          )}
           <Files m={m} />
           <Section title="Events">
             <EventTimeline stream={events} />
           </Section>
         </aside>
       </div>
+    </div>
+  )
+}
+
+function jsonSize(v: unknown): string {
+  if (v == null) return 'none'
+  return fmtBytes(new Blob([JSON.stringify(v)]).size)
+}
+
+function SectionToggle({
+  open,
+  onToggle,
+  title,
+  meta,
+}: {
+  open: boolean
+  onToggle: () => void
+  title: string
+  meta?: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle()
+      }}
+      className="-ml-1.5 flex items-center gap-1.5 rounded-md py-1 pr-2 pl-1"
+    >
+      <ChevronRight className={cn('size-3.5 text-muted-foreground transition-transform', open && 'rotate-90')} />
+      <span className="font-semibold">{title}</span>
+      {meta && <span className="text-[12px] text-muted-foreground">{meta}</span>}
+    </button>
+  )
+}
+
+function JsonActions({ json, name }: { json: unknown; name: string }) {
+  const [copied, setCopied] = useState(false)
+  if (json == null) return null
+  const text = JSON.stringify(json, null, 2)
+  return (
+    <div className="flex items-center gap-1 text-muted-foreground">
+      <Tip label={copied ? 'Copied' : 'Copy JSON'}>
+        <button
+          type="button"
+          aria-label={`Copy ${name}`}
+          onClick={() => {
+            void navigator.clipboard?.writeText(text)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1200)
+          }}
+          className="inline-grid size-7 place-items-center rounded-md hover:bg-accent hover:text-foreground"
+        >
+          {copied ? <Check className="size-3.5 text-status-success" /> : <Copy className="size-3.5" />}
+        </button>
+      </Tip>
+      <Tip label="Download JSON">
+        <a
+          aria-label={`Download ${name}`}
+          href={`data:application/json;charset=utf-8,${encodeURIComponent(text)}`}
+          download={`${name}.json`}
+          className="inline-grid size-7 place-items-center rounded-md hover:bg-accent hover:text-foreground"
+        >
+          <Download className="size-3.5" />
+        </a>
+      </Tip>
+    </div>
+  )
+}
+
+/** Return or input as a foldable section; open by default when there is something. */
+function DataSection({ title, json, empty, name }: { title: string; json: unknown; empty: string; name: string }) {
+  const [chosen, setChosen] = useState<boolean | null>(null)
+  const open = chosen ?? json != null
+  return (
+    <section className="border-b">
+      <div
+        onClick={() => setChosen(!open)}
+        className="sticky top-0 z-10 flex h-10 cursor-pointer items-center gap-3 bg-background px-5 hover:bg-muted"
+      >
+        <SectionToggle open={open} onToggle={() => setChosen(!open)} title={title} meta={jsonSize(json)} />
+        <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
+          <JsonActions json={json} name={name} />
+        </div>
+      </div>
+      {open && (
+        <div className="px-5 pb-3">
+          {json == null ? <span className="text-muted-foreground">{empty}</span> : <JsonTree json={json} />}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** The output as a foldable section; open by default unless nothing was printed. */
+function OutputSection({ m, out }: { m: MergedMission; out: OutputStreamState }) {
+  const printed = out.lines.length > 0 || !out.done
+  const [chosen, setChosen] = useState<boolean | null>(null)
+  const open = chosen ?? printed
+  const meta = out.lines.length > 0 ? `${lineCount(out.lines)} lines` : out.done ? 'nothing printed' : undefined
+  const toggle = (
+    <SectionToggle open={open} onToggle={() => setChosen(!open)} title="Output" meta={open ? undefined : meta} />
+  )
+  if (!open) {
+    return (
+      <section className="border-b">
+        <div onClick={() => setChosen(!open)} className="flex h-10 cursor-pointer items-center px-5 hover:bg-muted">
+          {toggle}
+        </div>
+      </section>
+    )
+  }
+  return (
+    <LogPane
+      stream={out}
+      status={m.status}
+      truncatedStdout={m.truncated_stdout}
+      truncatedStderr={m.truncated_stderr}
+      heading={toggle}
+      onHeaderClick={() => setChosen(!open)}
+      fit
+      className="border-b"
+    />
+  )
+}
+
+/** Output, return and input one under another: whatever the mission printed
+ *  first, otherwise what it returned. */
+function RunBody({ m, out }: { m: MergedMission; out: OutputStreamState }) {
+  if (m.status === 'done' && !out.done) {
+    return <p className="px-5 py-3 text-muted-foreground">Loading…</p>
+  }
+  const printed = out.lines.length > 0 || !out.done
+  const output = <OutputSection m={m} out={out} />
+  return (
+    <div className="min-h-0 overflow-auto">
+      {printed && output}
+      {m.status === 'done' && <DataSection title="Return" json={m.return} empty="Nothing returned." name="return" />}
+      <DataSection title="Input" json={m.input} empty="No input." name="input" />
+      {!printed && output}
     </div>
   )
 }
@@ -220,7 +348,7 @@ function FailureNote({ m }: { m: MergedMission }) {
           {open ? 'Show less' : 'Show all'}
         </button>
       )}
-      {m.fail_details != null && <JsonView json={m.fail_details} className="mt-2 max-h-48" />}
+      {m.fail_details != null && <JsonTree json={m.fail_details} className="mt-2 max-h-48 overflow-auto text-muted-foreground" />}
     </div>
   )
 }

@@ -52,3 +52,12 @@ export function fmtBytes(n?: number): string {
   }
   return `${v.toFixed(1)} ${units[i]}`
 }
+
+/** lineCount counts the text lines in output chunks (one chunk may hold
+ *  several lines, and the last line may lack its newline). */
+export function lineCount(chunks: { data: string }[]): number {
+  let n = 0
+  for (const c of chunks) for (const ch of c.data) if (ch === '\n') n++
+  const last = chunks[chunks.length - 1]?.data
+  return last && !last.endsWith('\n') ? n + 1 : n
+}

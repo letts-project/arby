@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, Check, Copy, Loader2, WrapText } from 'lucide-react'
-import { useOutputStream } from '@/hooks/useOutputStream'
+import type { OutputStreamState } from '@/hooks/useOutputStream'
 import { cn } from '@/lib/utils'
+import { lineCount } from '@/lib/format'
 import { Tip } from './Tip'
 import type { Mission } from '@/lib/types'
 
@@ -13,22 +14,29 @@ type StreamFilter = 'all' | 'stdout' | 'stderr'
  * user scrolls up.
  */
 export function LogPane({
-  host,
-  id,
+  stream,
   status,
   truncatedStdout,
   truncatedStderr,
+  heading,
+  onHeaderClick,
+  fit = false,
   className,
 }: {
-  host: string
-  id: string
+  stream: OutputStreamState
   status: Mission['status']
   truncatedStdout?: boolean
   truncatedStderr?: boolean
+  heading?: ReactNode
+  /** Makes the whole header row clickable; its own controls stay separate. */
+  onHeaderClick?: () => void
+  /** Size to the content (up to 60% of the screen) inside a scrolling page,
+   *  with the header sticking to its top. */
+  fit?: boolean
   className?: string
 }) {
   const terminal = status === 'done'
-  const { lines, connected, error, trimmed } = useOutputStream(host, id, { enabled: true, terminal })
+  const { lines, connected, error, trimmed } = stream
   const ref = useRef<HTMLDivElement>(null)
   const [stick, setStick] = useState(true)
   const [filter, setFilter] = useState<StreamFilter>('all')
@@ -36,7 +44,8 @@ export function LogPane({
   const [copied, setCopied] = useState(false)
 
   const shown = useMemo(() => (filter === 'all' ? lines : lines.filter((l) => l.stream === filter)), [lines, filter])
-  const stderrCount = useMemo(() => lines.reduce((n, l) => n + (l.stream === 'stderr' ? 1 : 0), 0), [lines])
+  const stderrCount = useMemo(() => lineCount(lines.filter((l) => l.stream === 'stderr')), [lines])
+  const shownCount = useMemo(() => lineCount(shown), [shown])
 
   useEffect(() => {
     if (stick && ref.current) ref.current.scrollTop = ref.current.scrollHeight
@@ -57,11 +66,23 @@ export function LogPane({
   const live = !terminal && connected
 
   return (
-    <section className={cn('flex min-h-0 flex-col', className)}>
-      <div className="flex h-10 shrink-0 items-center gap-3 border-b px-5">
-        <h2 className="font-semibold">Output</h2>
+    <section className={cn('flex flex-col', !fit && 'min-h-0', className)}>
+      <div
+        onClick={onHeaderClick}
+        className={cn(
+          'flex h-10 shrink-0 items-center gap-3 px-5',
+          fit ? 'sticky top-0 z-10 bg-background' : 'border-b',
+          onHeaderClick && 'cursor-pointer hover:bg-muted',
+        )}
+      >
+        {heading ?? <h2 className="font-semibold">Output</h2>}
         {live && <span className="text-status-running">live</span>}
-        <div className="ml-2 flex items-center rounded-md border border-input p-0.5" role="group" aria-label="Streams">
+        <div
+          className="ml-2 flex items-center rounded-md border border-input bg-background p-0.5"
+          role="group"
+          aria-label="Streams"
+          onClick={(e) => e.stopPropagation()}
+        >
           {(['all', 'stdout', 'stderr'] as const).map((f) => (
             <button
               key={f}
@@ -78,8 +99,10 @@ export function LogPane({
             </button>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-1 text-muted-foreground">
-          <span className="mr-2 text-[12px]">{shown.length} lines</span>
+        <div className="ml-auto flex items-center gap-1 text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+          <span className="mr-2 text-[12px]">
+            {shownCount} {shownCount === 1 ? 'line' : 'lines'}
+          </span>
           <Tip label={wrap ? 'Don’t wrap long lines' : 'Wrap long lines'}>
             <button
               type="button"
@@ -104,8 +127,8 @@ export function LogPane({
           </Tip>
         </div>
       </div>
-      <div className="relative min-h-0 flex-1">
-        <div ref={ref} onScroll={onScroll} className="h-full overflow-auto px-5 py-3">
+      <div className={cn('relative', !fit && 'min-h-0 flex-1')}>
+        <div ref={ref} onScroll={onScroll} className={cn('overflow-auto px-5', fit ? 'max-h-[60vh] pb-3' : 'h-full py-3')}>
           {shown.length === 0 ? (
             error ? (
               <span className="text-status-failed">Couldn’t load output: {error}</span>
