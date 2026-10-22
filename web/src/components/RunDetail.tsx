@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useCanGoBack, useRouter } from '@tanstack/react-router'
 import { ArrowLeft, Download } from 'lucide-react'
@@ -14,7 +14,7 @@ import { EventTimeline } from './EventTimeline'
 import { MissionRowActions } from './MissionRowActions'
 import { Tip } from './Tip'
 import { fmtBytes, fmtDuration, fmtTime } from '@/lib/format'
-import { failureText, isFailure, missionTitle } from '@/lib/missionView'
+import { failureText, isFailure, missionTitle, reportedByMission } from '@/lib/missionView'
 import { cn } from '@/lib/utils'
 import type { MergedMission, MissionFile } from '@/lib/types'
 
@@ -180,22 +180,47 @@ function MetaLine({ m }: { m: MergedMission }) {
 
 function FailureNote({ m }: { m: MergedMission }) {
   const killed = m.outcome === 'killed'
+  const fromMission = reportedByMission(m)
+  const text = failureText(m)
+  const reason = m.fail_reason && m.fail_reason !== 'explicit' ? m.fail_reason : undefined
+  const ref = useRef<HTMLParagraphElement>(null)
+  const [open, setOpen] = useState(false)
+  const [clipped, setClipped] = useState(false)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el && !open) setClipped(el.scrollHeight > el.clientHeight + 1)
+  }, [text, open])
+
   return (
-    <div
-      className={cn(
-        'mt-3 max-w-4xl border-l-2 py-1 pl-3',
-        killed ? 'border-status-warn' : 'border-status-failed',
+    <div className={cn('mt-3 max-w-5xl border-l-2 py-1 pl-3', killed ? 'border-status-warn' : 'border-status-failed')}>
+      <div className="flex flex-wrap items-center gap-x-3 text-muted-foreground">
+        <Tip label={fromMission ? 'Sent by the mission as its fail event, not printed to its output' : 'Set by dugdale'}>
+          <span className={cn('cursor-default font-medium', killed ? 'text-status-warn' : 'text-status-failed')}>
+            {fromMission ? 'Reported by the mission' : 'Detected by dugdale'}
+          </span>
+        </Tip>
+        {reason && <span className="font-mono text-[12px]">{reason}</span>}
+        <CopyButton value={text} label="Copy message" />
+      </div>
+      <p
+        ref={ref}
+        className={cn(
+          'mt-1 font-mono text-[12.5px] leading-[1.6] whitespace-pre-wrap break-words',
+          open ? 'max-h-[50vh] overflow-auto' : 'line-clamp-4',
+        )}
+      >
+        {text}
+      </p>
+      {(clipped || open) && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="mt-0.5 text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          {open ? 'Show less' : 'Show all'}
+        </button>
       )}
-    >
-      <p className={cn('font-medium', killed ? 'text-status-warn' : 'text-status-failed')}>{failureText(m)}</p>
-      {(m.fail_reason || m.fail_details != null) && (
-        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-4 text-muted-foreground">
-          {m.fail_reason && <span className="font-mono text-[12px]">{m.fail_reason}</span>}
-          {m.fail_details != null && (
-            <span className="min-w-0 font-mono text-[12px] break-all">{JSON.stringify(m.fail_details)}</span>
-          )}
-        </div>
-      )}
+      {m.fail_details != null && <JsonView json={m.fail_details} className="mt-2 max-h-48" />}
     </div>
   )
 }

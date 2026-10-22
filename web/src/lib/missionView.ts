@@ -49,6 +49,42 @@ export function failureText(m: Pick<Mission, 'outcome' | 'fail_message' | 'fail_
   return m.outcome ?? ''
 }
 
+// fail_reason values dugdale sets itself; anything else came from the mission's fail event.
+const DUGDALE_REASONS = new Set([
+  'dugdale_shutdown',
+  'duplicate_final_event',
+  'event_line_too_large',
+  'event_protocol_error',
+  'force_delete',
+  'input_materialization_failed',
+  'killed_by_api',
+  'lane_removed',
+  'lost',
+  'no_event_nonzero_exit',
+  'output_collect_failed',
+  'output_commit_failed',
+  'php_memory_limit',
+  'return_too_large',
+  'segfault',
+  'sigabrt',
+  'sigbus',
+  'sigfpe',
+  'sigill',
+  'sigtrap',
+  'spawn_failed',
+  'success_then_failed_exit',
+  'too_many_output_files',
+  'unknown_sigkill',
+])
+
+/** reportedByMission tells whether the failure text came from the mission's
+ *  own fail event (so it is not in its stdout/stderr). */
+export function reportedByMission(m: Pick<Mission, 'outcome' | 'fail_reason'>): boolean {
+  const r = m.fail_reason
+  if (!r || m.outcome === 'timeout') return false
+  return !DUGDALE_REASONS.has(r) && !r.startsWith('signal_')
+}
+
 function scalar(v: unknown): string {
   if (typeof v === 'string') return v
   return JSON.stringify(v)

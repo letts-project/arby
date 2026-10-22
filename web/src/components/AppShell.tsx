@@ -24,8 +24,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="flex h-11 shrink-0 items-stretch gap-4 border-b bg-chrome px-5 lg:gap-6">
         <Link to="/" className="flex items-center gap-1.5 self-center">
           <Logo />
-          <span className="text-[15px] font-semibold tracking-tight">arby</span>
-          <span className="text-[12px] text-faint">{ARBY_VERSION && ARBY_VERSION !== 'dev' ? ARBY_VERSION : 'dev'}</span>
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-[15px] font-semibold tracking-tight">arby</span>
+            <span className="text-[12px] text-faint">{ARBY_VERSION && ARBY_VERSION !== 'dev' ? ARBY_VERSION : 'dev'}</span>
+          </span>
         </Link>
         <nav className="flex items-stretch gap-1">
           {NAV.map((n) => (

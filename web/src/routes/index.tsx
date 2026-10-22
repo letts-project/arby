@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { AlertTriangle } from 'lucide-react'
 import { useDashboard } from '@/hooks/useDashboard'
 import { useMissions } from '@/hooks/useMissions'
+import { useExpanded } from '@/hooks/useExpanded'
 import { MissionsTable } from '@/components/MissionsTable'
 import { QueuesTable } from '@/components/QueuesTable'
 import { LaneToggle } from '@/components/LaneToggle'
@@ -18,7 +19,23 @@ const RUNNING_LIMIT = 50
 function Overview() {
   const { data, isLoading, isError, error, refetch } = useDashboard()
   const running = useMissions({ status: 'running', limit: RUNNING_LIMIT })
-  const queues = data && <QueuesTable hosts={data.hosts} lanes={data.lanes} reasons={data.unavailable_reasons} />
+  const lanesOpen = useExpanded('arby.overview.lanes')
+  const expandable = (data?.hosts ?? []).filter((h) => h.online && h.managed).map((h) => h.id)
+  const allOpen = expandable.length > 0 && expandable.every((id) => lanesOpen.expanded.has(id))
+  const queues = data && (
+    <QueuesTable
+      hosts={data.hosts}
+      lanes={data.lanes}
+      reasons={data.unavailable_reasons}
+      expanded={lanesOpen.expanded}
+      onToggle={lanesOpen.toggle}
+    />
+  )
+  const toggleAll = expandable.length > 0 && (
+    <button type="button" onClick={() => lanesOpen.setAll(allOpen ? [] : expandable)} className="hover:text-foreground">
+      {allOpen ? 'Collapse all' : 'Show all lanes'}
+    </button>
+  )
 
   return (
     <div className="px-5 pt-4 pb-10">
@@ -54,7 +71,7 @@ function Overview() {
                   <MissionsTable rows={running.data?.items ?? []} embedded />
                 )}
               </Section>
-              <Section title="Queues" className="xl:hidden">
+              <Section title="Queues" className="xl:hidden" more={toggleAll}>
                 {queues}
               </Section>
               <Section
@@ -72,7 +89,7 @@ function Overview() {
                 )}
               </Section>
             </div>
-            <Section title="Queues" className="hidden xl:block">
+            <Section title="Queues" className="hidden xl:block" more={toggleAll}>
               {queues}
             </Section>
           </div>
