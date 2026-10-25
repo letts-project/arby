@@ -12,6 +12,7 @@ import { CopyButton } from './CopyButton'
 import { JsonTree } from './JsonTree'
 import { LogPane } from './LogPane'
 import { EventTimeline } from './EventTimeline'
+import { MissionProgress } from './MissionProgress'
 import { MissionRowActions } from './MissionRowActions'
 import { Tip } from './Tip'
 import { fmtBytes, fmtDuration, fmtTime, lineCount } from '@/lib/format'
@@ -46,8 +47,8 @@ export function RunDetail({
     qc.invalidateQueries({ queryKey: ['mission', m.host, m.mission_id] })
     qc.invalidateQueries({ queryKey: ['exec', m.host, m.mission_id] })
   }, [finished, qc, m.host, m.mission_id])
-  const progress = m.status === 'running' ? events.latestProgress : undefined
-  const pct = progress?.value != null ? Math.max(0, Math.min(100, Math.round(progress.value * 100))) : null
+  const progress = events.events.filter((ev) => ev.event === 'progress')
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   return (
     <div className="flex h-full flex-col">
@@ -63,15 +64,7 @@ export function RunDetail({
           </div>
           <MissionRowActions mission={m} layout="page" onRestarted={onRestarted} />
         </div>
-        {pct != null && (
-          <div className="mt-3 flex items-center gap-3">
-            <div className="h-1.5 max-w-xl flex-1 overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-status-running transition-[width] duration-500" style={{ width: `${pct}%` }} />
-            </div>
-            <span className="font-medium">{pct}%</span>
-            {progress?.message && <span className="truncate text-muted-foreground">{progress.message}</span>}
-          </div>
-        )}
+        <MissionProgress m={m} events={progress} historyOpen={historyOpen} onHistoryOpenChange={setHistoryOpen} />
         {isFailure(m) && <FailureNote m={m} />}
       </header>
 
@@ -82,7 +75,7 @@ export function RunDetail({
           {extra}
           <Files m={m} />
           <Section title="Events">
-            <EventTimeline stream={events} />
+            <EventTimeline stream={events} onShowProgress={() => setHistoryOpen(true)} />
           </Section>
         </aside>
       </div>
@@ -213,20 +206,12 @@ function OutputSection({ m, out }: { m: MergedMission; out: OutputStreamState })
   )
 }
 
-/** Output, return and input one under another: whatever the mission printed
- *  first, otherwise what it returned. */
 function RunBody({ m, out }: { m: MergedMission; out: OutputStreamState }) {
-  if (m.status === 'done' && !out.done) {
-    return <p className="px-5 py-3 text-muted-foreground">Loading…</p>
-  }
-  const printed = out.lines.length > 0 || !out.done
-  const output = <OutputSection m={m} out={out} />
   return (
     <div className="min-h-0 overflow-auto">
-      {printed && output}
-      {m.status === 'done' && <DataSection title="Return" json={m.return} empty="Nothing returned." name="return" />}
+      <OutputSection m={m} out={out} />
+      <DataSection title="Return" json={m.return} empty={m.status === 'done' ? 'Nothing returned.' : 'No return value yet.'} name="return" />
       <DataSection title="Input" json={m.input} empty="No input." name="input" />
-      {!printed && output}
     </div>
   )
 }

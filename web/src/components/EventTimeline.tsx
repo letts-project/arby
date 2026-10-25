@@ -32,7 +32,7 @@ function clock(ms?: number): string {
 
 /** The mission's lifecycle events, oldest first. Runs of progress events are
  *  folded to their latest one so a chatty mission doesn't bury the rest. */
-export function EventTimeline({ stream }: { stream: EventStreamState }) {
+export function EventTimeline({ stream, onShowProgress }: { stream: EventStreamState; onShowProgress?: () => void }) {
   const { events, failed } = stream
   if (events.length === 0) {
     return failed ? (
@@ -63,10 +63,14 @@ export function EventTimeline({ stream }: { stream: EventStreamState }) {
           <span className={cn('font-medium', ev.event === 'done' && 'text-foreground', ev.event === 'progress' && 'text-muted-foreground')}>
             {ev.event}
           </span>
-          <span className="min-w-0 truncate" title={summarize(ev)}>
-            {summarize(ev)}
-            {n > 0 && <span className="text-muted-foreground">{`  (+${n} earlier)`}</span>}
-          </span>
+          <div className="min-w-0">
+            <div className="truncate" title={summarize(ev)}>{summarize(ev)}</div>
+            {ev.event === 'progress' && onShowProgress ? (
+              <button type="button" onClick={onShowProgress} className="text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground">
+                View history
+              </button>
+            ) : n > 0 && <span className="text-muted-foreground">{`${n} earlier`}</span>}
+          </div>
         </li>
       ))}
     </ol>
