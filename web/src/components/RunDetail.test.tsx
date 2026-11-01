@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } from '@tanstack/react-router'
 import { useEventStream, type EventStreamState } from '@/hooks/useEventStream'
 import { useOutputStream, type OutputStreamState } from '@/hooks/useOutputStream'
-import type { MergedMission } from '@/lib/types'
+import type { MergedMission, MissionDetail } from '@/lib/types'
 import { RunDetail } from './RunDetail'
 
 vi.mock('@/hooks/useEventStream')
@@ -37,11 +38,44 @@ function renderDetail(m = mission) {
   })
 }
 
+async function renderDetailInRouter(m: MissionDetail) {
+  const rootRoute = createRootRoute({ component: () => <RunDetail m={m} back={null} onRestarted={() => {}} /> })
+  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/'] }) })
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  )
+  await screen.findByRole('heading', { name: 'export' })
+}
+
 function sectionOrder() {
   return screen.getAllByRole('button', { name: /^(Output|Return|Input)\b/ }).map((button) => button.textContent?.match(/^(Output|Return|Input)/)?.[0])
 }
 
 describe('RunDetail', () => {
+  it('links to the restarts of a mission', async () => {
+    await renderDetailInRouter({
+      ...mission,
+      status: 'done',
+      outcome: 'failed',
+      restarts: [
+        { mission_id: 'm3', status: 'running', time_created: 3000 },
+        { mission_id: 'm2', status: 'done', outcome: 'failed', time_created: 2000 },
+      ],
+    })
+    const section = screen.getByRole('heading', { name: 'Restarts' }).closest('section')!
+    const links = within(section).getAllByRole('link')
+    expect(links.map((a) => a.textContent)).toEqual(['m3', 'm2'])
+    expect(links[0]).toHaveAttribute('href', '/missions/s1/m3')
+    expect(within(section).getByText('running')).toBeInTheDocument()
+  })
+
+  it('has no restarts section when the mission was never restarted', () => {
+    renderDetail()
+    expect(screen.queryByRole('heading', { name: 'Restarts' })).toBeNull()
+  })
+
   it('keeps reported progress visible after a mission finishes without forcing it to 100%', () => {
     const view = renderDetail()
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '68')

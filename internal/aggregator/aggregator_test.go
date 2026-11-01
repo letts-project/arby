@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -372,6 +373,46 @@ func TestMissionRoutesToHost(t *testing.T) {
 	}
 	if he, ok := err.(*lettsclient.HTTPError); !ok || he.Status != 404 {
 		t.Errorf("missing mission err = %v (%T), want 404 HTTPError", err, err)
+	}
+}
+
+// TestMissionListsRestarts asserts the detail carries the missions restarted
+// from it, newest first. The stub ignores ?restarted_from like a dugdale that
+// predates the filter, so this also covers the client-side match.
+func TestMissionListsRestarts(t *testing.T) {
+	restart := func(id string, createdMs int64, from, outcome string) lettsclient.Mission {
+		m := mkMission(id, createdMs, 0, outcome)
+		m.RestartedFrom = from
+		return m
+	}
+	stubs := map[string]*stubDugdale{
+		"s1": newStub(t, []lettsclient.Mission{
+			mkMission("m-orig", 10, 0, "failed"),
+			restart("m-r1", 20, "m-orig", "failed"),
+			restart("m-r2", 30, "m-orig", "success"),
+			restart("m-other", 40, "m-r1", "success"),
+		}),
+	}
+	a := newAgg(t, stubs)
+
+	got, err := a.Mission("s1", "m-orig")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Restart{
+		{MissionID: "m-r2", Status: "done", Outcome: "success", TimeCreatedMs: 30},
+		{MissionID: "m-r1", Status: "done", Outcome: "failed", TimeCreatedMs: 20},
+	}
+	if !slices.Equal(got.Restarts, want) {
+		t.Fatalf("Restarts = %+v, want %+v", got.Restarts, want)
+	}
+
+	got, err = a.Mission("s1", "m-r2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Restarts) != 0 {
+		t.Fatalf("Restarts of m-r2 = %+v, want none", got.Restarts)
 	}
 }
 

@@ -72,14 +72,16 @@ func (a *Aggregator) execs(q ExecsQuery, outcomes []string) (any, error) {
 	return listMerged(hosts, outcomes, base, prev, parseOrder(q.Order)), nil
 }
 
-// ExecDetail is one exec mission plus a best-effort script preview (first 4 KiB).
-// The detail record omits the script staging_id (it returns only input/output
-// refs), so arby looks it up via the admin staging listing.
+// ExecDetail is one exec mission plus its restarts and a best-effort script
+// preview (first 4 KiB). The detail record omits the script staging_id (it
+// returns only input/output refs), so arby looks it up via the admin staging
+// listing.
 type ExecDetail struct {
 	MergedMission
-	ScriptPreview   string `json:"script_preview,omitempty"`
-	ScriptTruncated bool   `json:"script_truncated,omitempty"`
-	ScriptStagingID string `json:"script_staging_id,omitempty"`
+	Restarts        []Restart `json:"restarts,omitempty"`
+	ScriptPreview   string    `json:"script_preview,omitempty"`
+	ScriptTruncated bool      `json:"script_truncated,omitempty"`
+	ScriptStagingID string    `json:"script_staging_id,omitempty"`
 }
 
 // ExecDetail fetches a single exec mission from a specific host, tags it, and
@@ -95,7 +97,7 @@ func (a *Aggregator) ExecDetail(host, id string) (*ExecDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &ExecDetail{MergedMission: MergedMission{Mission: *m, Host: host}}
+	d := &ExecDetail{MergedMission: MergedMission{Mission: *m, Host: host}, Restarts: restartsOf(c, id)}
 	// Best-effort script preview; never fail the detail on preview errors.
 	if sl, e := lettsclient.ListStaging(c, lettsclient.ListStagingOpts{MissionID: id, RefKind: "script", Limit: 1}); e == nil && len(sl.Staging) > 0 {
 		sid := sl.Staging[0].StagingID

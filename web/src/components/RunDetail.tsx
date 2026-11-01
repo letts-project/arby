@@ -18,7 +18,7 @@ import { Tip } from './Tip'
 import { fmtBytes, fmtDuration, fmtTime, lineCount } from '@/lib/format'
 import { failureText, isFailure, missionTitle, reportedByMission } from '@/lib/missionView'
 import { cn } from '@/lib/utils'
-import type { MergedMission, MissionFile } from '@/lib/types'
+import type { MergedMission, MissionDetail, MissionFile } from '@/lib/types'
 
 /**
  * The detail screen shared by missions and exec runs: what it is and what
@@ -32,7 +32,7 @@ export function RunDetail({
   title,
   extra,
 }: {
-  m: MergedMission
+  m: MissionDetail
   back: ReactNode
   onRestarted: (newId: string) => void
   title?: ReactNode
@@ -72,6 +72,7 @@ export function RunDetail({
         <RunBody m={m} out={out} />
         <aside className="min-h-0 overflow-auto border-t px-5 py-4 lg:border-t-0 lg:border-l">
           <Facts m={m} />
+          <Restarts m={m} />
           {extra}
           <Files m={m} />
           <Section title="Events">
@@ -364,6 +365,30 @@ function Facts({ m }: { m: MergedMission }) {
         </div>
       ))}
     </dl>
+  )
+}
+
+function Restarts({ m }: { m: MissionDetail }) {
+  if (!m.restarts?.length) return null
+  return (
+    <Section title="Restarts">
+      <ul className="space-y-1">
+        {m.restarts.map((r) => (
+          <li key={r.mission_id} className="flex items-center gap-2">
+            <StatusBadge mission={r} iconOnly />
+            <Link
+              to={m.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id'}
+              params={{ host: m.host, id: r.mission_id }}
+              title={r.mission_id}
+              className="min-w-0 flex-1 truncate font-mono text-[12px] underline underline-offset-2"
+            >
+              {r.mission_id}
+            </Link>
+            <Ago ms={r.time_created} className="text-muted-foreground" />
+          </li>
+        ))}
+      </ul>
+    </Section>
   )
 }
 

@@ -442,10 +442,27 @@ func mergeReasons(a, b map[string]string) map[string]string {
 	return out
 }
 
+// maxRestarts caps how many restarts a mission detail lists (newest first).
+const maxRestarts = 20
+
+// Restart is a mission started by restarting another one.
+type Restart struct {
+	MissionID     string `json:"mission_id"`
+	Status        string `json:"status"`
+	Outcome       string `json:"outcome,omitempty"`
+	TimeCreatedMs int64  `json:"time_created,omitempty"`
+}
+
+// MissionDetail is a host-tagged mission with the missions restarted from it.
+type MissionDetail struct {
+	MergedMission
+	Restarts []Restart `json:"restarts,omitempty"`
+}
+
 // Mission fetches a single mission from a specific host and tags it. Not cached
 // (detail is always served fresh). An unknown/unmanaged host yields a 404
 // *HTTPError so the handler maps it straight to 404.
-func (a *Aggregator) Mission(host, id string) (*MergedMission, error) {
+func (a *Aggregator) Mission(host, id string) (*MissionDetail, error) {
 	c := a.byID[host]
 	if c == nil {
 		return nil, &lettsclient.HTTPError{
@@ -456,7 +473,25 @@ func (a *Aggregator) Mission(host, id string) (*MergedMission, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &MergedMission{Mission: *m, Host: host}, nil
+	return &MissionDetail{MergedMission: MergedMission{Mission: *m, Host: host}, Restarts: restartsOf(c, id)}, nil
+}
+
+// restartsOf lists the newest missions restarted from id, best-effort: a
+// listing failure yields none and never fails the detail.
+func restartsOf(c *lettsclient.Client, id string) []Restart {
+	resp, err := lettsclient.ListMissions(c, lettsclient.ListMissionsOpts{RestartedFrom: id, Limit: maxRestarts})
+	if err != nil {
+		return nil
+	}
+	var out []Restart
+	for _, m := range resp.Missions {
+		// A dugdale that predates the restarted_from filter ignores it.
+		if m.RestartedFrom != id {
+			continue
+		}
+		out = append(out, Restart{MissionID: m.MissionID, Status: m.Status, Outcome: m.Outcome, TimeCreatedMs: m.TimeCreatedMs})
+	}
+	return out
 }
 
 // Config returns the host's applied config as opaque JSON (GET /v1/admin/state).

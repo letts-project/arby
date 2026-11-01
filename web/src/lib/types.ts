@@ -45,6 +45,19 @@ export interface MergedMission extends Mission {
   host: string
 }
 
+/** A mission started by restarting another one. */
+export interface Restart {
+  mission_id: string
+  status: MissionStatus
+  outcome?: MissionOutcome
+  time_created?: number
+}
+
+/** One mission's detail record: the mission and, newest first, its restarts. */
+export interface MissionDetail extends MergedMission {
+  restarts?: Restart[]
+}
+
 /** host id → fan-out failure reason (timeout / reset / HTTP status), shown in
  *  the unavailable-hosts banner so the cause is visible without journalctl. */
 export type UnavailableReasons = Record<string, string>
@@ -139,7 +152,7 @@ export interface BulkItem {
   id: string
 }
 
-export interface ExecDetail extends MergedMission {
+export interface ExecDetail extends MissionDetail {
   script_preview?: string
   script_truncated?: boolean
   script_staging_id?: string

@@ -11,6 +11,7 @@ export function useMissionActions() {
   const qc = useQueryClient()
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['missions'] })
+    qc.invalidateQueries({ queryKey: ['mission'] })
     qc.invalidateQueries({ queryKey: ['dashboard'] })
     // The exec screens reuse these mutations (exec ids are mission ids), so
     // bust the exec caches too — list, detail, and group view.

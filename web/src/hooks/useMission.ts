@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
-import type { DashboardResult, MergedMission, MissionsPage } from '@/lib/types'
+import type { DashboardResult, MergedMission, MissionDetail, MissionsPage } from '@/lib/types'
 
 /** cachedListRow finds the mission in any list already in the cache, so the
  *  detail page can render at once while its own record loads. */
@@ -24,7 +24,7 @@ export function useMission(host: string, id: string) {
   const qc = useQueryClient()
   return useQuery({
     queryKey: ['mission', host, id],
-    queryFn: () => apiGet<MergedMission>(`/api/missions/${encodeURIComponent(host)}/${encodeURIComponent(id)}`),
+    queryFn: () => apiGet<MissionDetail>(`/api/missions/${encodeURIComponent(host)}/${encodeURIComponent(id)}`),
     placeholderData: () => cachedListRow(qc, host, id),
     refetchInterval: (q) => (q.state.data?.status === 'running' || q.state.data?.status === 'queued' ? 3000 : false),
   })
