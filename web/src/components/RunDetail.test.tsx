@@ -71,9 +71,16 @@ describe('RunDetail', () => {
     expect(within(section).getByText('running')).toBeInTheDocument()
   })
 
-  it('has no restarts section when the mission was never restarted', () => {
+  it('links back to the mission it restarts', async () => {
+    await renderDetailInRouter({ ...mission, status: 'done', outcome: 'failed', restarted_from: 'm0' })
+    const section = screen.getByRole('heading', { name: 'Restart of' }).closest('section')!
+    expect(within(section).getByRole('link', { name: 'm0' })).toHaveAttribute('href', '/missions/s1/m0')
+  })
+
+  it('has no restart sections for a mission outside any restart chain', () => {
     renderDetail()
     expect(screen.queryByRole('heading', { name: 'Restarts' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Restart of' })).toBeNull()
   })
 
   it('keeps reported progress visible after a mission finishes without forcing it to 100%', () => {

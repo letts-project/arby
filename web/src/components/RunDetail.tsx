@@ -276,18 +276,6 @@ function MetaLine({ m }: { m: MergedMission }) {
         <span className="font-mono text-[12px]">{m.mission_id}</span>
         <CopyButton value={m.mission_id} label="Copy mission id" />
       </span>
-      {m.restarted_from && (
-        <span>
-          restart of{' '}
-          <Link
-            to={m.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id'}
-            params={{ host: m.host, id: m.restarted_from }}
-            className="font-mono text-[12px] text-foreground underline underline-offset-2"
-          >
-            {m.restarted_from}
-          </Link>
-        </span>
-      )}
     </div>
   )
 }
@@ -368,27 +356,41 @@ function Facts({ m }: { m: MergedMission }) {
   )
 }
 
-function Restarts({ m }: { m: MissionDetail }) {
-  if (!m.restarts?.length) return null
+function RunLink({ m, id, className }: { m: MergedMission; id: string; className?: string }) {
   return (
-    <Section title="Restarts">
-      <ul className="space-y-1">
-        {m.restarts.map((r) => (
-          <li key={r.mission_id} className="flex items-center gap-2">
-            <StatusBadge mission={r} iconOnly />
-            <Link
-              to={m.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id'}
-              params={{ host: m.host, id: r.mission_id }}
-              title={r.mission_id}
-              className="min-w-0 flex-1 truncate font-mono text-[12px] underline underline-offset-2"
-            >
-              {r.mission_id}
-            </Link>
-            <Ago ms={r.time_created} className="text-muted-foreground" />
-          </li>
-        ))}
-      </ul>
-    </Section>
+    <Link
+      to={m.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id'}
+      params={{ host: m.host, id }}
+      title={id}
+      className={cn('truncate font-mono text-[12px] underline underline-offset-2', className)}
+    >
+      {id}
+    </Link>
+  )
+}
+
+function Restarts({ m }: { m: MissionDetail }) {
+  return (
+    <>
+      {m.restarted_from && (
+        <Section title="Restart of">
+          <RunLink m={m} id={m.restarted_from} className="block" />
+        </Section>
+      )}
+      {!!m.restarts?.length && (
+        <Section title="Restarts">
+          <ul className="space-y-1">
+            {m.restarts.map((r) => (
+              <li key={r.mission_id} className="flex items-center gap-2">
+                <StatusBadge mission={r} iconOnly />
+                <RunLink m={m} id={r.mission_id} className="min-w-0 flex-1" />
+                <Ago ms={r.time_created} className="text-muted-foreground" />
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+    </>
   )
 }
 
