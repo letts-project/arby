@@ -37,8 +37,8 @@ type Target = { host: string; mission_id: string } & Pick<
 function Subject({ m }: { m: Target }) {
   const input = inputSummary(m.input)
   return (
-    <div className="rounded-md bg-muted px-3 py-2">
-      <div>
+    <div className="min-w-0 rounded-md bg-muted px-3 py-2">
+      <div className="truncate">
         <Where host={m.host} lane={m.lane} className="font-medium" />
         <span className="ml-3 font-mono text-[12px] text-muted-foreground">{m.mission_id}</span>
       </div>
