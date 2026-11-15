@@ -12,7 +12,6 @@ const ARBY_VERSION = readCookie('arby_version')
 const NAV: { to: string; label: string; exact?: boolean }[] = [
   { to: '/', label: 'Overview', exact: true },
   { to: '/missions', label: 'Missions' },
-  { to: '/exec', label: 'Exec' },
   { to: '/dugdales', label: 'Dugdales' },
 ]
 

@@ -10,7 +10,7 @@ function MissionDetail() {
   const { host, id } = Route.useParams()
   const navigate = useNavigate()
   const { data: m, isLoading, isError, error, refetch } = useMission(host, id)
-  const back = <BackLink to="/missions" label="Missions" />
+  const back = <BackLink />
 
   if (isError) {
     return (

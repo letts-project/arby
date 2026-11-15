@@ -22,9 +22,9 @@ are still created by your applications and the `letts` CLI, not here.
 - **Missions** — a dense, cursor-paginated list merged across all hosts, with
   filters for status, outcome, lane, name and host. Each row carries its host,
   because a mission is identified by `(host, mission_id)`.
-- **Mission detail and live tail** — full record plus two live SSE streams for a
-  running mission: structured events (progress/status) and interleaved
-  stdout/stderr output.
+- **Mission detail and live tail** — full record with download links for its
+  input and output files, plus two live SSE streams for a running mission:
+  structured events (progress/status) and interleaved stdout/stderr output.
 - **Control actions** — restart, kill, and delete, individually or in bulk
   (bulk requests are chunked and grouped per host).
 - **Lanes** — every lane across the cluster, with pause / continue.
@@ -32,9 +32,6 @@ are still created by your applications and the `letts` CLI, not here.
 - **Dugdale detail** — a per-host dashboard: status and queue summary, this
   host's lanes (with pause / continue), its recent missions, and the applied
   config (collapsible).
-- **Exec history** — ad-hoc `letts exec` runs: list, detail (with script
-  preview), and grouped view of bulk sessions, plus a download proxy for output
-  artifacts.
 - **Light / dark theme**, toggle persisted in the browser.
 
 ## How it works

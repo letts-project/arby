@@ -30,7 +30,7 @@ import type { Mission } from '@/lib/types'
 
 type Target = { host: string; mission_id: string } & Pick<
   Mission,
-  'status' | 'kind' | 'mission_name' | 'display_name' | 'lane' | 'input'
+  'status' | 'mission_name' | 'lane' | 'input'
 >
 
 /** The mission a confirm dialog acts on. */
@@ -80,7 +80,6 @@ export function MissionRowActions({
   const done = mission.status === 'done'
   const id = { host: mission.host, id: mission.mission_id }
   const name = missionTitle(mission)
-  const detailRoute = mission.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id'
   const close = () => {
     setConfirm(null)
     setForce(false)
@@ -98,7 +97,7 @@ export function MissionRowActions({
         toast.success(`Restarted ${name}`, {
           action: {
             label: 'Open',
-            onClick: () => void navigate({ to: detailRoute, params: { host: mission.host, id: r.mission_id } }),
+            onClick: () => void navigate({ to: '/missions/$host/$id', params: { host: mission.host, id: r.mission_id } }),
           },
         })
       },

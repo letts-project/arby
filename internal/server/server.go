@@ -36,7 +36,6 @@ func (s *Server) Handler() http.Handler {
 	s.registerMissionRoutes(mux)
 	s.registerActionRoutes(mux)
 	s.registerClusterRoutes(mux) // lanes, dugdales, config
-	s.registerExecRoutes(mux)    // exec list/detail/group, staging proxy
 
 	// SPA: serve embedded files; fall back to index.html for client routes.
 	mux.HandleFunc("/", s.serveSPA)

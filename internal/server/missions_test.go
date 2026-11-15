@@ -162,9 +162,7 @@ func TestEmptyResultsSerializeAsArrays(t *testing.T) {
 	for _, tc := range []struct{ url, field string }{
 		{"/api/dashboard", `"recent_failures":[]`},
 		{"/api/missions", `"items":[]`},
-		{"/api/exec", `"items":[]`},
 		{"/api/lanes", `"lanes":[]`},
-		{"/api/exec/groups/no-such-group", `"items":[]`},
 	} {
 		if body := rawBody(ts.URL + tc.url); !strings.Contains(body, tc.field) {
 			t.Errorf("%s: missing %s in body:\n%s", tc.url, tc.field, body)

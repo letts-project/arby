@@ -16,12 +16,12 @@ import (
 // is exercised.
 func TestStagingDownloadReturnsBytesWithHeaders(t *testing.T) {
 	s1 := newStub(t, nil)
-	s1.scriptByMission = map[string]string{"e-a": "#!/bin/sh\necho hello\n"}
+	s1.stagingFiles = map[string]string{"stg-1": "hello\n"}
 	ts := newTestServer(t, map[string]*stub{"s1": s1})
 
-	resp, err := http.Get(ts.URL + "/api/staging/s1/e-a-script")
+	resp, err := http.Get(ts.URL + "/api/staging/s1/stg-1")
 	if err != nil {
-		t.Fatalf("GET /api/staging/s1/e-a-script: %v", err)
+		t.Fatalf("GET /api/staging/s1/stg-1: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -31,12 +31,12 @@ func TestStagingDownloadReturnsBytesWithHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if string(body) != "#!/bin/sh\necho hello\n" {
-		t.Fatalf("body = %q, want the staged script", string(body))
+	if string(body) != "hello\n" {
+		t.Fatalf("body = %q, want the staged bytes", string(body))
 	}
 	cd := resp.Header.Get("Content-Disposition")
-	if mt, params, err := mime.ParseMediaType(cd); err != nil || mt != "attachment" || params["filename"] != "e-a-script" {
-		t.Fatalf("Content-Disposition = %q, want attachment with filename=e-a-script", cd)
+	if mt, params, err := mime.ParseMediaType(cd); err != nil || mt != "attachment" || params["filename"] != "stg-1" {
+		t.Fatalf("Content-Disposition = %q, want attachment with filename=stg-1", cd)
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "application/octet-stream" {
 		t.Fatalf("Content-Type = %q, want application/octet-stream", ct)
@@ -54,7 +54,7 @@ func TestStagingDownloadUnknownHost(t *testing.T) {
 	s1 := newStub(t, nil)
 	ts := newTestServer(t, map[string]*stub{"s1": s1})
 
-	if code := getJSON(t, ts.URL+"/api/staging/nope/e-a-script", nil); code != http.StatusNotFound {
+	if code := getJSON(t, ts.URL+"/api/staging/nope/stg-1", nil); code != http.StatusNotFound {
 		t.Fatalf("unknown-host staging status = %d, want 404", code)
 	}
 }
@@ -64,7 +64,7 @@ func TestStagingDownloadUnknownHost(t *testing.T) {
 func TestStagingDownloadFilenameEscaped(t *testing.T) {
 	id := `e"; filename=evil.exe; x="`
 	s1 := newStub(t, nil)
-	s1.rawStaging = map[string]string{id: "payload"}
+	s1.stagingFiles = map[string]string{id: "payload"}
 	ts := newTestServer(t, map[string]*stub{"s1": s1})
 
 	resp, err := http.Get(ts.URL + "/api/staging/s1/" + url.PathEscape(id))
@@ -90,10 +90,10 @@ func TestStagingDownloadFilenameEscaped(t *testing.T) {
 // downloads work end-to-end through the proxy.
 func TestStagingDownloadForwardsRange(t *testing.T) {
 	s1 := newStub(t, nil)
-	s1.scriptByMission = map[string]string{"e-a": "0123456789abcdef"}
+	s1.stagingFiles = map[string]string{"stg-1": "0123456789abcdef"}
 	ts := newTestServer(t, map[string]*stub{"s1": s1})
 
-	req, err := http.NewRequest("GET", ts.URL+"/api/staging/s1/e-a-script", nil)
+	req, err := http.NewRequest("GET", ts.URL+"/api/staging/s1/stg-1", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}

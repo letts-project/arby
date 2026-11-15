@@ -19,7 +19,6 @@ function makeRow(over: Partial<MergedMission>): MergedMission {
     host: 'srv-izi1',
     mission_id: 'm-1',
     mission_name: 'nightly-sweep',
-    display_name: 'nightly-sweep',
     lane: 'default',
     status: 'done',
     outcome: 'success',

@@ -38,7 +38,7 @@ function MissionsList() {
   const searchKey = JSON.stringify(search)
   const filter = toFilter(search)
   const scroll = useScrollTop()
-  const list = useInfiniteList('missions', '/api/missions', filter, scroll.atTop)
+  const list = useInfiniteList(filter, scroll.atTop)
   const { items, isLoading, isError, error, refetch, isFetching, isFetchingNextPage } = list
   const patch = (p: Partial<MissionSearch>) => void navigate({ search: (prev) => ({ ...prev, ...p }) })
   const { toTop } = scroll

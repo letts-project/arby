@@ -30,15 +30,9 @@ type stubDugdale struct {
 	lanes    []lettsclient.LaneInfo
 	offline  bool
 
-	// --- cluster & exec surface ------------------------------------
-	// execMissions backs GET /v1/missions?kind=exec (honoring ?group_id).
-	execMissions []lettsclient.Mission
+	// --- cluster surface ------------------------------------------
 	// stateJSON is returned verbatim by GET /v1/admin/state (opaque config).
 	stateJSON string
-	// scriptByMission maps a mission id → its script body, served by the staging
-	// routes (GET /v1/staging?mission_id=…&ref_kind=script lists one StagingFile;
-	// GET /v1/staging/{id} returns the bytes, honoring a bytes=0-N Range).
-	scriptByMission map[string]string
 	// pauseCalls / continueCalls record the lane names passed to the lane admin
 	// routes so tests can assert an action reached the right host's stub.
 	pauseCalls    []string
@@ -68,20 +62,13 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stubDugdale {
 		if r.URL.Query().Get("order") == "finished" {
 			ord = orderFinished
 		}
-		// Pick the source slice by kind: kind=exec serves execMissions,
-		// everything else serves the regular missions.
-		src := s.missions
-		if r.URL.Query().Get("kind") == "exec" {
-			src = s.execMissions
-		}
-		// Apply the dugdale's server-side filters (status/outcome/lane/group_id) so
-		// e.g. outcome=failed returns only failures and group_id scopes a run.
+		// Apply the dugdale's server-side filters (status/outcome/lane) so e.g.
+		// outcome=failed returns only failures.
 		fStatus := r.URL.Query().Get("status")
 		fOutcome := r.URL.Query().Get("outcome")
 		fLane := r.URL.Query().Get("lane")
-		fGroup := r.URL.Query().Get("group_id")
 		var filtered []lettsclient.Mission
-		for _, m := range src {
+		for _, m := range s.missions {
 			if fStatus != "" && m.Status != fStatus {
 				continue
 			}
@@ -89,9 +76,6 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stubDugdale {
 				continue
 			}
 			if fLane != "" && m.Lane != fLane {
-				continue
-			}
-			if fGroup != "" && m.GroupID != fGroup {
 				continue
 			}
 			filtered = append(filtered, m)
@@ -176,7 +160,7 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stubDugdale {
 		_ = json.NewEncoder(w).Encode(map[string]string{"version": s.info.Version})
 	})
 
-	// --- cluster & exec surface ------------------------------------
+	// --- cluster surface ------------------------------------------
 
 	// POST /v1/admin/lanes/{name}/pause → 204, recording the lane name.
 	mux.HandleFunc("POST /v1/admin/lanes/{name}/pause", func(w http.ResponseWriter, r *http.Request) {
@@ -212,55 +196,6 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stubDugdale {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.WriteString(w, body)
-	})
-
-	// GET /v1/staging?mission_id=…&ref_kind=script → a single StagingFile for the
-	// mission's script (id "<mission>-script", size = len(body)), or an empty
-	// list when the mission has no recorded script.
-	mux.HandleFunc("GET /v1/staging", func(w http.ResponseWriter, r *http.Request) {
-		if s.offline {
-			http.Error(w, "down", http.StatusBadGateway)
-			return
-		}
-		mid := r.URL.Query().Get("mission_id")
-		refKind := r.URL.Query().Get("ref_kind")
-		var files []lettsclient.StagingFile
-		if body, ok := s.scriptByMission[mid]; ok && (refKind == "" || refKind == "script") {
-			files = append(files, lettsclient.StagingFile{
-				StagingID: mid + "-script", State: "complete", RefKind: "script",
-				Role: "script", Size: int64(len(body)),
-			})
-		}
-		_ = json.NewEncoder(w).Encode(lettsclient.ListStagingResponse{Staging: files})
-	})
-
-	// GET /v1/staging/{id} → the script bytes for "<mission>-script", honoring a
-	// leading-window Range like "bytes=0-4095" (inclusive end, clamped to len).
-	mux.HandleFunc("GET /v1/staging/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if s.offline {
-			http.Error(w, "down", http.StatusBadGateway)
-			return
-		}
-		id := r.PathValue("id")
-		mid := strings.TrimSuffix(id, "-script")
-		body, ok := s.scriptByMission[mid]
-		if !ok {
-			writeJSONError(w, http.StatusNotFound, "not_found", "no such staging file")
-			return
-		}
-		data := []byte(body)
-		status := http.StatusOK
-		if rng := r.Header.Get("Range"); strings.HasPrefix(rng, "bytes=0-") {
-			if end, err := strconv.Atoi(strings.TrimPrefix(rng, "bytes=0-")); err == nil {
-				if end+1 < len(data) { // inclusive end; only a partial slice is a 206
-					data = data[:end+1]
-					status = http.StatusPartialContent
-				}
-			}
-		}
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.WriteHeader(status)
-		_, _ = w.Write(data)
 	})
 
 	s.srv = httptest.NewServer(mux)

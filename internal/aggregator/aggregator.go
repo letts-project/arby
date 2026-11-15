@@ -171,9 +171,9 @@ func (a *Aggregator) hostsFor(host string) (hosts []hostClient, ok bool) {
 }
 
 // Missions fans out ListMissions per host and outcome (using each stream's
-// prior cursor), k-way-merges, and returns one page. kind is forced to
-// "mission". The result is cached under a key derived from all query params,
-// with the outcome list normalized. An invalid outcome yields a 400 *HTTPError.
+// prior cursor), k-way-merges, and returns one page. The result is cached under
+// a key derived from all query params, with the outcome list normalized. An
+// invalid outcome yields a 400 *HTTPError.
 //
 // The returned MissionsPage.Items aliases the cached page entry and MUST be
 // treated as read-only: it is shared with concurrent readers, so mutating it
@@ -215,7 +215,7 @@ func (a *Aggregator) missions(q MissionsQuery, outcomes []string) (any, error) {
 		limit = 100
 	}
 	base := lettsclient.ListMissionsOpts{
-		Kind: "mission", Status: q.Status, Lane: q.Lane, Mission: q.Mission,
+		Status: q.Status, Lane: q.Lane, Mission: q.Mission,
 		Order: q.Order, Limit: limit,
 	}
 	return listMerged(hosts, outcomes, base, prev, parseOrder(q.Order)), nil

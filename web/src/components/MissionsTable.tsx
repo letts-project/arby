@@ -221,7 +221,7 @@ export function MissionsTable({
               >
                 {i === 0 && (
                   <Link
-                    to={r.original.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id'}
+                    to="/missions/$host/$id"
                     params={{ host: r.original.host, id: r.original.mission_id }}
                     aria-label={`Open mission ${missionTitle(r.original)}`}
                     className="absolute inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"

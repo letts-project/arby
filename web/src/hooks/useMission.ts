@@ -4,15 +4,13 @@ import type { DashboardResult, MergedMission, MissionDetail, MissionsPage } from
 
 /** cachedListRow finds the mission in any list already in the cache, so the
  *  detail page can render at once while its own record loads. */
-export function cachedListRow(qc: QueryClient, host: string, id: string): MergedMission | undefined {
+function cachedListRow(qc: QueryClient, host: string, id: string): MergedMission | undefined {
   const match = (m: MergedMission) => m.host === host && m.mission_id === id
-  for (const key of [['missions'], ['execs'], ['execGroup']]) {
-    for (const [, data] of qc.getQueriesData<MissionsPage | InfiniteData<MissionsPage>>({ queryKey: key })) {
-      const pages = data && 'pages' in data ? data.pages : [data]
-      for (const page of pages) {
-        const hit = page?.items?.find(match)
-        if (hit) return hit
-      }
+  for (const [, data] of qc.getQueriesData<MissionsPage | InfiniteData<MissionsPage>>({ queryKey: ['missions'] })) {
+    const pages = data && 'pages' in data ? data.pages : [data]
+    for (const page of pages) {
+      const hit = page?.items?.find(match)
+      if (hit) return hit
     }
   }
   return qc.getQueryData<DashboardResult>(['dashboard'])?.recent_failures?.find(match)

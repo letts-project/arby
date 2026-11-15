@@ -32,8 +32,8 @@ export function stateQuery(state?: MissionState, outcome?: string): { status?: s
   }
 }
 
-export function missionTitle(m: Pick<Mission, 'mission_name' | 'display_name' | 'mission_id'>): string {
-  return m.mission_name || m.display_name || m.mission_id
+export function missionTitle(m: Pick<Mission, 'mission_name' | 'mission_id'>): string {
+  return m.mission_name || m.mission_id
 }
 
 export function isFailure(m: Pick<Mission, 'status' | 'outcome'>): boolean {

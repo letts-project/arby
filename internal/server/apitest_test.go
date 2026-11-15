@@ -46,23 +46,12 @@ type stub struct {
 	// routes so tests can assert a lane action reached the right host's stub.
 	pauseCalls    []string
 	continueCalls []string
-	// --- exec surface -------------------------------------------
-	// execMissions backs GET /v1/missions?kind=exec (honoring ?group_id), used by
-	// the /api/exec list and group handlers.
-	execMissions []lettsclient.Mission
-	// scriptByMission maps a mission id → its script body, served by the staging
-	// routes (GET /v1/staging?mission_id=…&ref_kind=script lists one StagingFile;
-	// GET /v1/staging/{id} returns the bytes, honoring a bytes=0-N Range). Used by
-	// exec-detail script preview and by the staging download proxy.
-	scriptByMission map[string]string
+	// stagingFiles maps a staging id → body for GET /v1/staging/{id}.
+	stagingFiles map[string]string
 	// stagingRanges records the Range header value the staging download route saw
 	// for each request (empty string when none), so a test can assert the proxy
 	// forwarded Range upstream.
 	stagingRanges []string
-	// rawStaging maps an exact staging id → body for GET /v1/staging/{id},
-	// independent of the scriptByMission convention (for ids that aren't
-	// "<mission>-script", e.g. ones with awkward characters).
-	rawStaging map[string]string
 	// hugeOutputLine makes the output route emit a single NDJSON line larger
 	// than the relay's per-line scanner cap, to exercise its error reporting.
 	hugeOutputLine bool
@@ -91,15 +80,8 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stub {
 		fStatus := r.URL.Query().Get("status")
 		fOutcome := r.URL.Query().Get("outcome")
 		fLane := r.URL.Query().Get("lane")
-		fGroup := r.URL.Query().Get("group_id")
-		// kind=exec serves execMissions; everything else serves the
-		// regular missions slice.
-		src := s.missions
-		if r.URL.Query().Get("kind") == "exec" {
-			src = s.execMissions
-		}
 		var filtered []lettsclient.Mission
-		for _, m := range src {
+		for _, m := range s.missions {
 			if fStatus != "" && m.Status != fStatus {
 				continue
 			}
@@ -107,9 +89,6 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stub {
 				continue
 			}
 			if fLane != "" && m.Lane != fLane {
-				continue
-			}
-			if fGroup != "" && m.GroupID != fGroup {
 				continue
 			}
 			filtered = append(filtered, m)
@@ -219,40 +198,16 @@ func newStub(t *testing.T, missions []lettsclient.Mission) *stub {
 		_, _ = io.WriteString(w, body)
 	})
 
-	// GET /v1/staging?mission_id=…&ref_kind=script → a single StagingFile for the
-	// mission's script (id "<mission>-script", size = len(body)), or an empty
-	// list when the mission has no recorded script. Backs exec-detail preview.
-	mux.HandleFunc("GET /v1/staging", func(w http.ResponseWriter, r *http.Request) {
-		if s.offline {
-			http.Error(w, "down", http.StatusBadGateway)
-			return
-		}
-		mid := r.URL.Query().Get("mission_id")
-		refKind := r.URL.Query().Get("ref_kind")
-		var files []lettsclient.StagingFile
-		if body, ok := s.scriptByMission[mid]; ok && (refKind == "" || refKind == "script") {
-			files = append(files, lettsclient.StagingFile{
-				StagingID: mid + "-script", State: "complete", RefKind: "script",
-				Role: "script", Size: int64(len(body)),
-			})
-		}
-		_ = json.NewEncoder(w).Encode(lettsclient.ListStagingResponse{Staging: files})
-	})
-
-	// GET /v1/staging/{id} → the script bytes for "<mission>-script", honoring a
-	// leading-window Range like "bytes=0-4095" (inclusive end, clamped to len).
-	// Records the Range it saw so a test can assert the proxy forwarded it.
+	// GET /v1/staging/{id} → the stagingFiles body, honoring a leading-window
+	// Range like "bytes=0-3" (inclusive end, clamped to len). Records the Range it
+	// saw so a test can assert the proxy forwarded it.
 	mux.HandleFunc("GET /v1/staging/{id}", func(w http.ResponseWriter, r *http.Request) {
 		s.stagingRanges = append(s.stagingRanges, r.Header.Get("Range"))
 		if s.offline {
 			http.Error(w, "down", http.StatusBadGateway)
 			return
 		}
-		id := r.PathValue("id")
-		body, ok := s.rawStaging[id]
-		if !ok {
-			body, ok = s.scriptByMission[strings.TrimSuffix(id, "-script")]
-		}
+		body, ok := s.stagingFiles[r.PathValue("id")]
 		if !ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)

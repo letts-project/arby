@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 
-// A tiny ref-counted lock shared across the app. While any mission/exec action
+// A tiny ref-counted lock shared across the app. While any mission action
 // menu or confirm dialog is open, the list queries pause their polling — so a
 // background refetch can't reorder the table and yank the open menu (or a
 // half-confirmed Kill/Delete modal) out from under the user mid-action.

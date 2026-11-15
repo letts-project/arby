@@ -13,11 +13,6 @@ export function useMissionActions() {
     qc.invalidateQueries({ queryKey: ['missions'] })
     qc.invalidateQueries({ queryKey: ['mission'] })
     qc.invalidateQueries({ queryKey: ['dashboard'] })
-    // The exec screens reuse these mutations (exec ids are mission ids), so
-    // bust the exec caches too — list, detail, and group view.
-    qc.invalidateQueries({ queryKey: ['execs'] })
-    qc.invalidateQueries({ queryKey: ['exec'] })
-    qc.invalidateQueries({ queryKey: ['execGroup'] })
   }
 
   const restart = useMutation({

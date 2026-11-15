@@ -21,22 +21,18 @@ import { cn } from '@/lib/utils'
 import type { MergedMission, MissionDetail, MissionFile } from '@/lib/types'
 
 /**
- * The detail screen shared by missions and exec runs: what it is and what
- * happened (status, failure, progress, actions) on top, the output, return and
- * input below it, and the facts (timing, files, events) beside them.
+ * The mission detail screen: what it is and what happened (status, failure,
+ * progress, actions) on top, the output, return and input below it, and the
+ * facts (timing, files, events) beside them.
  */
 export function RunDetail({
   m,
   back,
   onRestarted,
-  title,
-  extra,
 }: {
   m: MissionDetail
   back: ReactNode
   onRestarted: (newId: string) => void
-  title?: ReactNode
-  extra?: ReactNode
 }) {
   const events = useEventStream(m.host, m.mission_id, true)
   const out = useOutputStream(m.host, m.mission_id, { enabled: true, terminal: m.status === 'done' })
@@ -45,7 +41,6 @@ export function RunDetail({
   useEffect(() => {
     if (!finished) return
     qc.invalidateQueries({ queryKey: ['mission', m.host, m.mission_id] })
-    qc.invalidateQueries({ queryKey: ['exec', m.host, m.mission_id] })
   }, [finished, qc, m.host, m.mission_id])
   const progress = events.events.filter((ev) => ev.event === 'progress')
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -58,7 +53,7 @@ export function RunDetail({
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-3">
               <StatusBadge mission={m} className="text-[14px]" />
-              <h1 className="min-w-0 truncate text-[19px] font-semibold">{title ?? missionTitle(m)}</h1>
+              <h1 className="min-w-0 truncate text-[19px] font-semibold">{missionTitle(m)}</h1>
             </div>
             <MetaLine m={m} />
           </div>
@@ -73,7 +68,6 @@ export function RunDetail({
         <aside className="min-h-0 overflow-auto border-t px-5 py-4 lg:border-t-0 lg:border-l">
           <Facts m={m} />
           <Restarts m={m} />
-          {extra}
           <Files m={m} />
           <Section title="Events">
             <EventTimeline stream={events} onShowProgress={() => setHistoryOpen(true)} />
@@ -218,8 +212,8 @@ function RunBody({ m, out }: { m: MergedMission; out: OutputStreamState }) {
 }
 
 /** Back to wherever the user came from (keeping that list's filters), or to
- *  the section list on a fresh tab. */
-export function BackLink({ to, label }: { to: '/missions' | '/exec'; label: string }) {
+ *  the missions list on a fresh tab. */
+export function BackLink() {
   const router = useRouter()
   const canGoBack = useCanGoBack()
   const cls = 'inline-flex items-center gap-1 text-muted-foreground hover:text-foreground'
@@ -232,9 +226,9 @@ export function BackLink({ to, label }: { to: '/missions' | '/exec'; label: stri
     )
   }
   return (
-    <Link to={to} className={cls}>
+    <Link to="/missions" className={cls}>
       <ArrowLeft className="size-3.5" />
-      {label}
+      Missions
     </Link>
   )
 }
@@ -359,7 +353,7 @@ function Facts({ m }: { m: MergedMission }) {
 function RunLink({ m, id, className }: { m: MergedMission; id: string; className?: string }) {
   return (
     <Link
-      to={m.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id'}
+      to="/missions/$host/$id"
       params={{ host: m.host, id }}
       title={id}
       className={cn('truncate font-mono text-[12px] underline underline-offset-2', className)}
@@ -425,5 +419,3 @@ function Files({ m }: { m: MergedMission }) {
     </Section>
   )
 }
-
-export { Section as DetailSection }

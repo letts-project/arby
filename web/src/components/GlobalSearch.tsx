@@ -19,7 +19,7 @@ async function findMission(hosts: string[], id: string): Promise<MergedMission |
   }
 }
 
-/** Top-bar search: a pasted mission/exec id opens it directly, anything else
+/** Top-bar search: a pasted mission id opens it directly, anything else
  *  filters the missions list by name. `/` focuses it. */
 export function GlobalSearch() {
   const navigate = useNavigate()
@@ -60,7 +60,7 @@ export function GlobalSearch() {
     setQ('')
     ref.current?.blur()
     void navigate({
-      to: m.kind === 'exec' ? '/exec/$host/$id' : '/missions/$host/$id',
+      to: '/missions/$host/$id',
       params: { host: m.host, id: m.mission_id },
     })
   }

@@ -13,11 +13,8 @@ export type MissionOutcome = 'success' | 'failed' | 'killed' | 'timeout' | 'cras
 
 export interface Mission {
   mission_id: string
-  kind?: 'mission' | 'exec'
   lane?: string
   mission_name?: string
-  display_name?: string
-  group_id?: string
   status: MissionStatus
   outcome?: MissionOutcome
   exit_code?: number
@@ -150,28 +147,6 @@ export interface BulkResponse {
 export interface BulkItem {
   host: string
   id: string
-}
-
-export interface ExecDetail extends MissionDetail {
-  script_preview?: string
-  script_truncated?: boolean
-  script_staging_id?: string
-}
-
-export interface ExecGroupSummary {
-  total: number
-  success: number
-  failed: number
-  running: number
-  queued: number
-}
-
-export interface ExecGroupResult {
-  group_id: string
-  items: MergedMission[]
-  summary: ExecGroupSummary
-  unavailable_hosts?: string[]
-  unavailable_reasons?: UnavailableReasons
 }
 
 /** Raw daemon event — the `data:` payload of the /events SSE relay. */

@@ -7,15 +7,17 @@ import (
 	"arby/internal/aggregator"
 )
 
-// registerMissionRoutes wires the read /api routes onto mux, including the two
-// SSE live-tail relays (/events, /output) which use the registry stream clients
-// (Timeout=0) directly — never the aggregator's fan-out clients.
+// registerMissionRoutes wires the read /api routes onto mux, including the
+// staging download proxy and the two SSE live-tail relays (/events, /output),
+// which use the registry stream clients (Timeout=0) directly — never the
+// aggregator's fan-out clients.
 func (s *Server) registerMissionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/dashboard", s.handleDashboard)
 	mux.HandleFunc("GET /api/missions", s.handleMissions)
 	mux.HandleFunc("GET /api/missions/{host}/{id}", s.handleMissionDetail)
 	mux.HandleFunc("GET /api/missions/{host}/{id}/events", s.handleMissionEvents)
 	mux.HandleFunc("GET /api/missions/{host}/{id}/output", s.handleMissionOutput)
+	mux.HandleFunc("GET /api/staging/{host}/{id}", s.handleStagingDownload)
 }
 
 // handleDashboard serves the cluster overview (per-host status, lanes, recent
